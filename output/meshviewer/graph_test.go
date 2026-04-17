@@ -29,6 +29,32 @@ func TestGenerateGraph(t *testing.T) {
 	assert.Equal(4, testNodesCountWithLinks(graph.Batadv.Links), "wrong unneed nodes in graph")
 	assert.Len(graph.Batadv.Nodes, 4, "wrong Nodes count")
 	// TODO more tests required
+
+	// All Batman IV links carry tq, never throughput
+	for _, link := range graph.Batadv.Links {
+		assert.NotZero(link.TQ, "Batman IV link missing tq")
+		assert.Zero(link.Throughput, "Batman IV link unexpectedly has throughput")
+	}
+}
+
+func TestGenerateGraphBatmanV(t *testing.T) {
+	assert := assert.New(t)
+	nodes := testGetNodesByFile("node5.json", "node6.json")
+
+	// mark both nodes online so addLink is reached for both directions
+	for _, n := range nodes.List {
+		n.Online = true
+	}
+
+	graph := BuildGraph(nodes)
+	assert.NotNil(graph)
+	assert.Len(graph.Batadv.Links, 1, "wrong Links count")
+
+	link := graph.Batadv.Links[0]
+	assert.Zero(link.TQ, "Batman V link unexpectedly has tq")
+	// Bidirectional throughput: min of 12000 and 24000 = 12000
+	assert.Equal(float32(12000), link.Throughput, "wrong throughput on Batman V link")
+	assert.True(link.Bidirect, "Batman V link should be bidirectional")
 }
 
 func testGetNodesByFile(files ...string) *runtime.Nodes {
