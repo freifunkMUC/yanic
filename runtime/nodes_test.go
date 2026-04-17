@@ -12,6 +12,8 @@ import (
 	"github.com/FreifunkBremen/yanic/lib/jsontime"
 )
 
+func ptrUint32(v uint32) *uint32 { return &v }
+
 func TestExpire(t *testing.T) {
 	assert := assert.New(t)
 	config := &NodesConfig{}
@@ -233,6 +235,33 @@ func TestLinksNodes(t *testing.T) {
 		},
 	})
 
+	nodes.Update("f4f26dd7a30c", &data.ResponseData{
+		Nodeinfo: &data.Nodeinfo{
+			NodeID: "f4f26dd7a30c",
+			Network: data.Network{
+				Mac: "f4:f2:6d:d7:a3:0c",
+			},
+		},
+	})
+	nodes.Update("f4f26dd7a30d", &data.ResponseData{
+		Nodeinfo: &data.Nodeinfo{
+			NodeID: "f4f26dd7a30d",
+			Network: data.Network{
+				Mac: "f4:f2:6d:d7:a3:0d",
+			},
+		},
+		Neighbours: &data.Neighbours{
+			NodeID: "f4f26dd7a30d",
+			Batadv: map[string]data.BatadvNeighbours{
+				"f4:f2:6d:d7:a3:0d": {
+					Neighbours: map[string]data.BatmanLink{
+						"f4:f2:6d:d7:a3:0c": {Throughput: ptrUint32(24000), Lastseen: 0.42},
+					},
+				},
+			},
+		},
+	})
+
 	// no neighbours nodeid
 	node := nodes.List["f4f26dd7a300"]
 	assert.NotNil(node)
@@ -251,7 +280,7 @@ func TestLinksNodes(t *testing.T) {
 	assert.Equal("fe80::1337", link.TargetAddress)
 	assert.Equal(float32(0.6), link.TQ)
 
-	// batman link
+	// batman IV link
 	node = nodes.List["f4f26dd7a30b"]
 	assert.NotNil(node)
 	links = nodes.NodeLinks(node)
@@ -262,6 +291,21 @@ func TestLinksNodes(t *testing.T) {
 	assert.Equal("f4f26dd7a30a", link.TargetID)
 	assert.Equal("f4:f2:6d:d7:a3:0a", link.TargetAddress)
 	assert.Equal(float32(0.8), link.TQ)
+	assert.Nil(link.Throughput)
+
+	// batman V link
+	node = nodes.List["f4f26dd7a30d"]
+	assert.NotNil(node)
+	links = nodes.NodeLinks(node)
+	assert.Len(links, 1)
+	link = links[0]
+	assert.Equal("f4f26dd7a30d", link.SourceID)
+	assert.Equal("f4:f2:6d:d7:a3:0d", link.SourceAddress)
+	assert.Equal("f4f26dd7a30c", link.TargetID)
+	assert.Equal("f4:f2:6d:d7:a3:0c", link.TargetAddress)
+	assert.Equal(float32(0), link.TQ)
+	assert.NotNil(link.Throughput)
+	assert.Equal(uint32(24000), *link.Throughput)
 
 	nodeid := nodes.GetNodeIDbyAddress("f4:f2:6d:d7:a3:0a")
 	assert.Equal("f4f26dd7a30a", nodeid)
