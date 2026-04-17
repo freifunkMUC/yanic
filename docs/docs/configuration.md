@@ -357,7 +357,7 @@ enable = true # (1)
 Save collected data to InfluxDB.
 There are would be the following measurements:
 - node: store node specific data i.e. clients memory, airtime
-- link: store link tq between two interfaces of two different nodes
+- link: store link quality between two interfaces of two different nodes (tq for Batman IV, throughput for Batman V)
 - global: store global data, i.e. count of clients and nodes
 - firmware: store the count of nodes tagged with firmware
 - model: store the count of nodes tagged with hardware model
@@ -396,7 +396,7 @@ Save collected data to InfluxDB2.
 There are the following measurements:
 
   - **node**: store node specific data i.e. clients memory, airtime
-  - **link**: store link tq between two interfaces of two different nodes with i.e. nodeid, address, hostname
+  - **link**: store link quality between two interfaces of two different nodes (tq for Batman IV, throughput for Batman V) with i.e. nodeid, address, hostname
   - **global**: store global data, i.e. count of clients and nodes
   - **firmware**: store the count of nodes tagged with firmware
   - **model**: store the count of nodes tagged with hardware model

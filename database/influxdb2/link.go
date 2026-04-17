@@ -10,11 +10,16 @@ import (
 
 // InsertLink adds a link data point
 func (conn *Connection) InsertLink(link *runtime.Link, t time.Time) {
+	fields := map[string]interface{}{}
+	if link.Throughput != nil {
+		// cast to int64: the InfluxDB2 client would write uint32 as an unsigned (u) field
+		fields["throughput"] = int64(*link.Throughput)
+	} else {
+		fields["tq"] = link.TQ * 100
+	}
 	p := influxdb.NewPoint(MeasurementLink,
 		conn.config.Tags(),
-		map[string]interface{}{
-			"tq": link.TQ * 100,
-		},
+		fields,
 		t).
 		AddTag("source.id", link.SourceID).
 		AddTag("source.addr", link.SourceAddress).
