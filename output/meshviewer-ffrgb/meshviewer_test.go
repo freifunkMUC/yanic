@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func ptrUint32(v uint32) *uint32 { return &v }
+
 func TestTransform(t *testing.T) {
 	assert := assert.New(t)
 
@@ -172,24 +174,108 @@ func TestTransform(t *testing.T) {
 		case "node:a:mac:lan":
 			assert.Equal("node:b:mac:lan", link.TargetAddress, "a:lan -> b:lan")
 			assert.Equal("other", link.Type, "a:lan -> b:lan")
-			assert.Equal(float32(0.2), link.SourceTQ, "a:lan -> b:lan")
-			assert.Equal(float32(0), link.TargetTQ, "a:lan -> b:lan")
+			assert.NotNil(link.SourceTQ, "a:lan -> b:lan")
+			assert.Equal(float32(0.2), *link.SourceTQ, "a:lan -> b:lan")
+			assert.Nil(link.TargetTQ, "a:lan -> b:lan unseen side")
 			counter++
 		case "node:a:mac:wifi":
 			assert.Equal("node:b:mac:wifi", link.TargetAddress, "a:wifi <-> b:wifi")
 			assert.Equal("wifi", link.Type, "a:wifi <-> b:wifi")
-			assert.Equal(float32(0.6), link.SourceTQ, "a:wifi <-> b:wifi")
-			assert.Equal(float32(0.8), link.TargetTQ, "a:wifi <-> b:wifi")
+			assert.NotNil(link.SourceTQ, "a:wifi <-> b:wifi")
+			assert.Equal(float32(0.6), *link.SourceTQ, "a:wifi <-> b:wifi")
+			assert.NotNil(link.TargetTQ, "a:wifi <-> b:wifi")
+			assert.Equal(float32(0.8), *link.TargetTQ, "a:wifi <-> b:wifi")
 			counter++
 		case "node:b:mac:lan":
 			assert.Equal("other", link.Type, "b:lan <-> c:lan")
 			assert.Equal("node:c:mac:lan", link.TargetAddress, "b:lan <-> c:lan")
-			assert.Equal(float32(0.8), link.SourceTQ, "b:lan <-> c:lan")
-			assert.Equal(float32(0.4), link.TargetTQ, "b:lan <-> c:lan")
+			assert.NotNil(link.SourceTQ, "b:lan <-> c:lan")
+			assert.Equal(float32(0.8), *link.SourceTQ, "b:lan <-> c:lan")
+			assert.NotNil(link.TargetTQ, "b:lan <-> c:lan")
+			assert.Equal(float32(0.4), *link.TargetTQ, "b:lan <-> c:lan")
 			counter++
 		default:
 			assert.False(true, "invalid link.SourceAddress found")
 		}
 	}
 	assert.Equal(3, counter, "not found every link")
+}
+
+func TestTransformBatmanV(t *testing.T) {
+	assert := assert.New(t)
+
+	nodes := runtime.NewNodes(&runtime.NodesConfig{})
+	nodes.AddNode(&runtime.Node{
+		Online: true,
+		Nodeinfo: &data.Nodeinfo{
+			NodeID: "node_e",
+			Network: data.Network{
+				Mac: "node:e:mac",
+				Mesh: map[string]*data.NetworkInterface{
+					"bat0": {
+						Interfaces: struct {
+							Wireless []string `json:"wireless,omitempty"`
+							Other    []string `json:"other,omitempty"`
+							Tunnel   []string `json:"tunnel,omitempty"`
+						}{
+							Wireless: []string{"node:e:mac:wifi"},
+						},
+					},
+				},
+			},
+		},
+		Neighbours: &data.Neighbours{
+			NodeID: "node_e",
+			Batadv: map[string]data.BatadvNeighbours{
+				"node:e:mac:wifi": {
+					Neighbours: map[string]data.BatmanLink{
+						"node:f:mac:wifi": {Throughput: ptrUint32(24000)},
+					},
+				},
+			},
+		},
+	})
+	nodes.AddNode(&runtime.Node{
+		Online: true,
+		Nodeinfo: &data.Nodeinfo{
+			NodeID: "node_f",
+			Network: data.Network{
+				Mac: "node:f:mac",
+				Mesh: map[string]*data.NetworkInterface{
+					"bat0": {
+						Interfaces: struct {
+							Wireless []string `json:"wireless,omitempty"`
+							Other    []string `json:"other,omitempty"`
+							Tunnel   []string `json:"tunnel,omitempty"`
+						}{
+							Wireless: []string{"node:f:mac:wifi"},
+						},
+					},
+				},
+			},
+		},
+		Neighbours: &data.Neighbours{
+			NodeID: "node_f",
+			Batadv: map[string]data.BatadvNeighbours{
+				"node:f:mac:wifi": {
+					Neighbours: map[string]data.BatmanLink{
+						"node:e:mac:wifi": {Throughput: ptrUint32(12000)},
+					},
+				},
+			},
+		},
+	})
+
+	meshviewer := transform(nodes)
+	assert.NotNil(meshviewer)
+	assert.Len(meshviewer.Links, 1)
+
+	link := meshviewer.Links[0]
+	assert.Equal("wifi", link.Type)
+	assert.Nil(link.SourceTQ)
+	assert.Nil(link.TargetTQ)
+	// One direction reports 24000, the other 12000; both populate because
+	// transform uses the per-direction value, not a min like graph.go.
+	assert.NotZero(link.SourceThroughput)
+	assert.NotZero(link.TargetThroughput)
 }

@@ -71,13 +71,15 @@ type Location struct {
 
 // Link
 type Link struct {
-	Type          string  `json:"type"`
-	Source        string  `json:"source"`
-	Target        string  `json:"target"`
-	SourceTQ      float32 `json:"source_tq"`
-	TargetTQ      float32 `json:"target_tq"`
-	SourceAddress string  `json:"source_addr"`
-	TargetAddress string  `json:"target_addr"`
+	Type             string  `json:"type"`
+	Source           string  `json:"source"`
+	Target           string  `json:"target"`
+	SourceTQ         *float32 `json:"source_tq,omitempty"`
+	TargetTQ         *float32 `json:"target_tq,omitempty"`
+	SourceThroughput *uint32 `json:"source_tp,omitempty"`
+	TargetThroughput *uint32 `json:"target_tp,omitempty"`
+	SourceAddress    string  `json:"source_addr"`
+	TargetAddress    string  `json:"target_addr"`
 }
 
 func NewNode(nodes *runtime.Nodes, n *runtime.Node) *Node {
