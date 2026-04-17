@@ -8,6 +8,15 @@ import (
 	"github.com/FreifunkBremen/yanic/runtime"
 )
 
+// tqPtr returns nil for Batman V links (throughput != nil) and a pointer to TQ
+// for Batman IV links (throughput == nil), including dead TQ=0 links.
+func tqPtr(tq float32, throughput *uint32) *float32 {
+	if throughput != nil {
+		return nil
+	}
+	return &tq
+}
+
 func transform(nodes *runtime.Nodes) *Meshviewer {
 
 	meshviewer := &Meshviewer{
@@ -41,27 +50,33 @@ func transform(nodes *runtime.Nodes) *Meshviewer {
 
 			if link := links[key]; link != nil {
 				if switchSourceTarget {
-					link.TargetTQ = linkOrigin.TQ
+					link.TargetTQ = tqPtr(linkOrigin.TQ, linkOrigin.Throughput)
+					link.TargetThroughput = linkOrigin.Throughput
 				} else {
-					link.SourceTQ = linkOrigin.TQ
+					link.SourceTQ = tqPtr(linkOrigin.TQ, linkOrigin.Throughput)
+					link.SourceThroughput = linkOrigin.Throughput
 				}
 				continue
 			}
 			link := &Link{
-				Source:        linkOrigin.SourceID,
-				SourceAddress: linkOrigin.SourceAddress,
-				Target:        linkOrigin.TargetID,
-				TargetAddress: linkOrigin.TargetAddress,
-				SourceTQ:      linkOrigin.TQ,
-				TargetTQ:      0,
-				Type:          linkOrigin.Type.String(),
+				Source:           linkOrigin.SourceID,
+				SourceAddress:    linkOrigin.SourceAddress,
+				Target:           linkOrigin.TargetID,
+				TargetAddress:    linkOrigin.TargetAddress,
+				SourceTQ:         tqPtr(linkOrigin.TQ, linkOrigin.Throughput),
+				TargetTQ:         nil,
+				SourceThroughput: linkOrigin.Throughput,
+				TargetThroughput: nil,
+				Type:             linkOrigin.Type.String(),
 			}
 
 			if switchSourceTarget {
-				link.SourceTQ = 0
+				link.SourceTQ = nil
+				link.SourceThroughput = nil
 				link.Source = linkOrigin.TargetID
 				link.SourceAddress = linkOrigin.TargetAddress
-				link.TargetTQ = linkOrigin.TQ
+				link.TargetTQ = tqPtr(linkOrigin.TQ, linkOrigin.Throughput)
+				link.TargetThroughput = linkOrigin.Throughput
 				link.Target = linkOrigin.SourceID
 				link.TargetAddress = linkOrigin.SourceAddress
 			}
