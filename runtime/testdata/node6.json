@@ -1,0 +1,29 @@
+{
+  "nodeinfo": {
+    "node_id": "node6.json",
+    "network": {
+      "mac": "f",
+      "mesh": {
+        "bat0": {
+          "interfaces": {
+            "wireless": [
+              "f"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "neighbours": {
+    "batadv": {
+      "f": {
+        "neighbours": {
+          "e": {
+            "throughput": 12000,
+            "lastseen": 0.42
+          }
+        }
+      }
+    }
+  }
+}

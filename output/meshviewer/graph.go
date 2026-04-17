@@ -24,13 +24,21 @@ type GraphNode struct {
 	NodeID string `json:"node_id"`
 }
 
-// GraphLink a struct  for the link between two nodes
+// GraphLink is a link between two nodes in graph.json.
+//
+// TQ is the inverse of normalised link quality (1/(linkTQ/255)); lower is
+// better (historical meshviewer convention — the UI inverts again for
+// display). Throughput is raw kbit/s; higher is better. Both are omitempty.
+// During Batman IV↔V rolling upgrades a single link can report one metric
+// per direction, so consumers that see both populated should prefer
+// Throughput and fall back to TQ.
 type GraphLink struct {
-	Source   int     `json:"source"`
-	Target   int     `json:"target"`
-	VPN      bool    `json:"vpn"`
-	TQ       float32 `json:"tq"`
-	Bidirect bool    `json:"bidirect"`
+	Source     int     `json:"source"`
+	Target     int     `json:"target"`
+	VPN        bool    `json:"vpn"`
+	TQ         float32 `json:"tq,omitempty"`
+	Throughput float32 `json:"throughput,omitempty"`
+	Bidirect   bool    `json:"bidirect"`
 }
 
 // GraphBuilder a temporaty struct during fill the graph from the node neighbours
@@ -97,7 +105,7 @@ func (builder *graphBuilder) readNodes(nodes map[string]*runtime.Node) {
 					for targetAddress, link := range batadvNeighbours.Neighbours {
 						if targetID, found := builder.macToID[targetAddress]; found {
 							_, vpn := vpnInterface[sourceMAC]
-							builder.addLink(targetID, sourceID, link.TQ, vpn)
+							builder.addLink(targetID, sourceID, link.TQ, link.Throughput, vpn)
 						}
 					}
 				}
@@ -105,7 +113,7 @@ func (builder *graphBuilder) readNodes(nodes map[string]*runtime.Node) {
 				for _, neighbours := range neighbours.LLDP {
 					for _, targetAddress := range neighbours {
 						if targetID, found := builder.macToID[targetAddress]; found {
-							builder.addLink(targetID, sourceID, 255, false)
+							builder.addLink(targetID, sourceID, 255, nil, false)
 						}
 					}
 				}
@@ -159,7 +167,7 @@ func (builder *graphBuilder) extract() ([]*GraphNode, []*GraphLink) {
 	return cache.Nodes, links
 }
 
-func (builder *graphBuilder) addLink(targetID string, sourceID string, linkTQ int, vpn bool) {
+func (builder *graphBuilder) addLink(targetID string, sourceID string, linkTQ int, throughput *uint32, vpn bool) {
 	// Sort IDs to generate the key
 	var key string
 	if strings.Compare(sourceID, targetID) > 0 {
@@ -174,14 +182,22 @@ func (builder *graphBuilder) addLink(targetID string, sourceID string, linkTQ in
 	}
 
 	if link, ok := builder.links[key]; !ok {
-		builder.links[key] = &GraphLink{
-			VPN: vpn,
-			TQ:  tq,
+		gl := &GraphLink{VPN: vpn}
+		if linkTQ > 0 {
+			gl.TQ = tq
 		}
+		if throughput != nil {
+			gl.Throughput = float32(*throughput)
+		}
+		builder.links[key] = gl
 	} else {
-		// Use lowest of both link qualities
-		if tq < link.TQ {
+		// Lowest TQ wins (inverse-TQ); TQ=0 means unset, not worst
+		if linkTQ > 0 && (link.TQ == 0 || tq < link.TQ) {
 			link.TQ = tq
+		}
+		// Lowest throughput wins (bottleneck); Throughput=0 means unset
+		if throughput != nil && (link.Throughput == 0 || float32(*throughput) < link.Throughput) {
+			link.Throughput = float32(*throughput)
 		}
 		link.Bidirect = true
 	}
