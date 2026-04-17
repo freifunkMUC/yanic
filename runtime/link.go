@@ -51,6 +51,7 @@ type Link struct {
 	TargetAddress  string
 	TargetHostname string
 	TQ             float32
+	Throughput     *uint32 // in kbit/s; nil for Batman IV links, non-nil for Batman V (even 0)
 	Type           LinkType
 	Protocol       LinkProtocol
 }

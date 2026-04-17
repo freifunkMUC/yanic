@@ -129,6 +129,7 @@ func (nodes *Nodes) NodeLinks(node *Node) (result []Link) {
 					TargetID:      neighbourID,
 					TargetAddress: neighbourMAC,
 					TQ:            float32(link.TQ) / 255.0,
+					Throughput:    link.Throughput,
 				}
 
 				if neighbourExists && neighbour.Nodeinfo != nil {
