@@ -22,5 +22,11 @@ func (conn *Connection) InsertLink(link *runtime.Link, t time.Time) {
 		tags.SetString("target.hostname", link.TargetHostname)
 	}
 
-	conn.addPoint(MeasurementLink, tags, models.Fields{"tq": link.TQ * 100}, t)
+	fields := models.Fields{}
+	if link.Throughput != nil {
+		fields["throughput"] = *link.Throughput
+	} else {
+		fields["tq"] = link.TQ * 100
+	}
+	conn.addPoint(MeasurementLink, tags, fields, t)
 }
