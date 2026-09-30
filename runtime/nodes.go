@@ -60,6 +60,7 @@ func (nodes *Nodes) Update(nodeID string, res *data.ResponseData) *Node {
 	now := jsontime.Now()
 
 	nodes.Lock()
+	defer nodes.Unlock()
 	node := nodes.List[nodeID]
 
 	if node == nil {
@@ -71,7 +72,6 @@ func (nodes *Nodes) Update(nodeID string, res *data.ResponseData) *Node {
 	if res.Nodeinfo != nil {
 		nodes.readIfaces(res.Nodeinfo, res.Neighbours, true)
 	}
-	nodes.Unlock()
 
 	// Update wireless statistics
 	if statistics := res.Statistics; statistics != nil {

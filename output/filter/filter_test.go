@@ -94,3 +94,31 @@ func TestFilter(t *testing.T) {
 	nodes = filter.Apply(nodes)
 	assert.Len(nodes.List, 1)
 }
+
+func TestApplyConcurrentUpdate(t *testing.T) {
+	nodes := runtime.NewNodes(&runtime.NodesConfig{})
+	response := func() *data.ResponseData {
+		return &data.ResponseData{
+			Nodeinfo:   &data.Nodeinfo{NodeID: "a"},
+			Statistics: &data.Statistics{NodeID: "a"},
+		}
+	}
+	nodes.Update("a", response())
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 1000; i++ {
+			nodes.Update("a", response())
+		}
+	}()
+
+	var set Set
+	for i := 0; i < 1000; i++ {
+		for _, node := range set.Apply(nodes).List {
+			_ = node.Online
+			_ = node.Statistics
+		}
+	}
+	<-done
+}

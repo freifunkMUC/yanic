@@ -54,12 +54,12 @@ func New(configs map[string]interface{}) (set Set, errs []error) {
 func (set Set) Apply(nodesOrigin *runtime.Nodes) *runtime.Nodes {
 	nodes := runtime.NewNodes(&runtime.NodesConfig{})
 
-	nodesOrigin.Lock()
-	defer nodesOrigin.Unlock()
+	nodesOrigin.RLock()
+	defer nodesOrigin.RUnlock()
 
 	for _, nodeOrigin := range nodesOrigin.List {
-		//maybe cloning of this object is better?
-		node := nodeOrigin
+		nodeCopy := *nodeOrigin
+		node := &nodeCopy
 		for _, filter := range set {
 			node = filter.Apply(node)
 			if node == nil {
