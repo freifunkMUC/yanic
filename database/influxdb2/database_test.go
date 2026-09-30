@@ -19,8 +19,11 @@ func TestConnect(t *testing.T) {
 	assert.Nil(conn)
 	assert.Error(err)
 
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closed.Close()
+
 	conn, err = Connect(map[string]interface{}{
-		"address":        "http://localhost",
+		"address":        closed.URL,
 		"token":          "",
 		"bucket_default": "all",
 	})
