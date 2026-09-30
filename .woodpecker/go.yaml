@@ -1,6 +1,7 @@
 when:
   - event: push
   - event: pull_request
+  - event: manual
   - event: tag
     ref: refs/tags/v*
 
