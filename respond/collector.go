@@ -294,19 +294,22 @@ func (coll *Collector) saveResponse(addr *net.UDPAddr, res *data.ResponseData) {
 
 	// Process the data and update IP address
 	node := coll.nodes.Update(nodeID, res)
+	coll.nodes.Lock()
 	node.Address = addr
+	coll.nodes.Unlock()
 
 	// Store statistics in database
 	if db := coll.db; db != nil {
-		db.InsertNode(node)
+		coll.nodes.RLock()
+		nodeCopy := *node
+		links := coll.nodes.NodeLinks(node)
+		coll.nodes.RUnlock()
+
+		db.InsertNode(&nodeCopy)
 
 		// Store link data
-		if neighbours := node.Neighbours; neighbours != nil {
-			coll.nodes.RLock()
-			for _, link := range coll.nodes.NodeLinks(node) {
-				db.InsertLink(&link, node.Lastseen.GetTime())
-			}
-			coll.nodes.RUnlock()
+		for _, link := range links {
+			db.InsertLink(&link, nodeCopy.Lastseen.GetTime())
 		}
 	}
 }
