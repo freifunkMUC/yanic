@@ -1,7 +1,9 @@
 package filter
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
 
 	"codeberg.org/FreifunkBremen/yanic/lib/log"
 	"codeberg.org/FreifunkBremen/yanic/runtime"
@@ -21,6 +23,16 @@ type Set []Filter
 
 var filters = make(map[string]factory)
 
+// filters which rewrite the node, they run before all other filters
+var rewriteFilters = []string{"domain_as_site", "domain_append_site"}
+
+func order(name string) int {
+	if i := slices.Index(rewriteFilters, name); i >= 0 {
+		return i
+	}
+	return len(rewriteFilters)
+}
+
 // Register registers a new filter
 func Register(name string, f factory) {
 	if _, ok := filters[name]; ok {
@@ -31,9 +43,21 @@ func Register(name string, f factory) {
 
 // New returns and initializes a set of filters
 func New(configs map[string]interface{}) (set Set, errs []error) {
-	for name, config := range configs {
+	names := make([]string, 0, len(configs))
+	for name := range configs {
+		names = append(names, name)
+	}
+	slices.SortFunc(names, func(a, b string) int {
+		if c := cmp.Compare(order(a), order(b)); c != 0 {
+			return c
+		}
+		return cmp.Compare(a, b)
+	})
+
+	for _, name := range names {
+		config := configs[name]
 		if config == nil {
-			return
+			continue
 		}
 
 		f := filters[name]
