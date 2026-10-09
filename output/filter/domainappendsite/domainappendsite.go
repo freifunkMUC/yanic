@@ -3,9 +3,9 @@ package domainappendsite
 import (
 	"errors"
 
-	"github.com/FreifunkBremen/yanic/data"
-	"github.com/FreifunkBremen/yanic/output/filter"
-	"github.com/FreifunkBremen/yanic/runtime"
+	"codeberg.org/FreifunkBremen/yanic/data"
+	"codeberg.org/FreifunkBremen/yanic/output/filter"
+	"codeberg.org/FreifunkBremen/yanic/runtime"
 )
 
 type domainAppendSite struct{ set bool }

@@ -3,10 +3,8 @@ package filter
 import (
 	"fmt"
 
-	"github.com/bdlm/log"
-	"github.com/pkg/errors"
-
-	"github.com/FreifunkBremen/yanic/runtime"
+	"codeberg.org/FreifunkBremen/yanic/lib/log"
+	"codeberg.org/FreifunkBremen/yanic/runtime"
 )
 
 // factory function for building a filter
@@ -26,7 +24,7 @@ var filters = make(map[string]factory)
 // Register registers a new filter
 func Register(name string, f factory) {
 	if _, ok := filters[name]; ok {
-		log.WithField("filter", name).Panic("filter already registered")
+		log.Panic("filter already registered", "name", name)
 	}
 	filters[name] = f
 }
@@ -42,7 +40,7 @@ func New(configs map[string]interface{}) (set Set, errs []error) {
 		if f == nil {
 			errs = append(errs, fmt.Errorf("unknown filter: %s", name))
 		} else if filter, err := f(config); err != nil {
-			errs = append(errs, errors.Wrapf(err, "unable to initialize filter %s", name))
+			errs = append(errs, fmt.Errorf("%v: unable to initialize filter %s", err, name))
 		} else if filter != nil {
 			set = append(set, filter)
 		}

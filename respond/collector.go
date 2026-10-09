@@ -2,17 +2,17 @@ package respond
 
 import (
 	"fmt"
+	"log/slog"
 	"net"
 	"time"
 
 	"golang.org/x/sys/unix"
 
-	"github.com/bdlm/log"
-
-	"github.com/FreifunkBremen/yanic/data"
-	"github.com/FreifunkBremen/yanic/database"
-	"github.com/FreifunkBremen/yanic/lib/jsontime"
-	"github.com/FreifunkBremen/yanic/runtime"
+	"codeberg.org/FreifunkBremen/yanic/data"
+	"codeberg.org/FreifunkBremen/yanic/database"
+	"codeberg.org/FreifunkBremen/yanic/lib/jsontime"
+	"codeberg.org/FreifunkBremen/yanic/lib/log"
+	"codeberg.org/FreifunkBremen/yanic/runtime"
 )
 
 // Collector for a specificle respond messages
@@ -72,7 +72,7 @@ func (coll *Collector) listenUDP(iface InterfaceConfig) {
 	}
 
 	if err != nil {
-		log.WithField("iface", iface.InterfaceName).Panic(err)
+		log.Panic("error fetch ip address on iface", log.AttrError(err), "iface", iface.InterfaceName)
 	}
 
 	multicastAddress := MulticastAddressDefault
@@ -87,24 +87,24 @@ func (coll *Collector) listenUDP(iface InterfaceConfig) {
 		Zone: iface.InterfaceName,
 	})
 	if err != nil {
-		log.Panic(err)
+		log.Panic("listen on udp", log.AttrError(err))
 	}
 	if err := conn.SetReadBuffer(MaxDataGramSize); err != nil {
-		log.Println("failed to set read buffer:", err)
+		slog.Error("failed to set read buffer", log.AttrError(err))
 	}
 
 	raw, err := conn.SyscallConn()
 	if err != nil {
-		log.Panic(err)
+		log.Panic("open syscall socket", log.AttrError(err))
 	}
 	err = raw.Control(func(fd uintptr) {
 		err = unix.SetsockoptInt(int(fd), unix.IPPROTO_IPV6, unix.IPV6_MULTICAST_IF, ifaceInfo.Index)
 		if err != nil {
-			log.Panic(err)
+			log.Panic("listen multicast on syscall socket", log.AttrError(err))
 		}
 	})
 	if err != nil {
-		log.Panic(err)
+		log.Panic("failed to set syscall control for listen multicast", log.AttrError(err))
 	}
 
 	coll.connections = append(coll.connections, multicastConn{
@@ -161,7 +161,7 @@ func (coll *Collector) Close() {
 	close(coll.stop)
 	for _, conn := range coll.connections {
 		if err := conn.Conn.Close(); err != nil {
-			log.WithError(err).Error("close during collector sockets")
+			slog.Error("close during collector sockets", log.AttrError(err))
 		}
 	}
 	close(coll.queue)
@@ -177,7 +177,7 @@ func (coll *Collector) sendOnce() {
 }
 
 func (coll *Collector) sendMulticast() {
-	log.Info("sending multicasts")
+	slog.Info("sending multicasts")
 	for _, conn := range coll.connections {
 		if conn.SendRequest {
 			coll.sendPacket(conn.Conn, conn.MulticastAddress)
@@ -206,16 +206,13 @@ func (coll *Collector) sendUnicasts(seenBefore jsontime.Time) {
 			send++
 		}
 		if send == 0 {
-			log.WithField("iface", node.Address.Zone).Error("unable to find connection")
+			slog.Error("unable to find connection", "iface", node.Address.Zone)
 		} else {
 			time.Sleep(10 * time.Millisecond)
 			count += send
 		}
 	}
-	log.WithFields(map[string]interface{}{
-		"pkg_count":   count,
-		"nodes_count": len(nodes),
-	}).Info("sending unicast pkg")
+	slog.Info("sending unicast pkg", "pkg_count", count, "nodes_count", len(nodes))
 }
 
 // SendPacket sends a UDP request to the given unicast or multicast address on the first UDP socket
@@ -232,7 +229,7 @@ func (coll *Collector) sendPacket(conn *net.UDPConn, destination net.IP) {
 	}
 
 	if _, err := conn.WriteToUDP([]byte("GET nodeinfo statistics neighbours"), &addr); err != nil {
-		log.WithError(err).WithField("address", addr.String()).Error("WriteToUDP failed")
+		slog.Error("WriteToUDP failed", log.AttrError(err), "address", addr.String())
 	}
 }
 
@@ -254,7 +251,7 @@ func (coll *Collector) sender() {
 func (coll *Collector) parser() {
 	for obj := range coll.queue {
 		if data, err := obj.parse(coll.config.CustomFields); err != nil {
-			log.WithError(err).WithField("address", obj.Address.String()).Error("unable to decode response")
+			slog.Error("unable to decode response", log.AttrError(err), "address", obj.Address.String())
 		} else {
 			coll.saveResponse(obj.Address, data)
 		}
@@ -274,10 +271,7 @@ func (coll *Collector) saveResponse(addr *net.UDPAddr, res *data.ResponseData) {
 
 	// Check length of nodeID
 	if len(nodeID) != 12 {
-		log.WithFields(map[string]interface{}{
-			"node_id": nodeID,
-			"address": addr.String(),
-		}).Warn("invalid NodeID")
+		slog.Warn("invalid NodeID", "node_id", nodeID, "address", addr.String())
 		return
 	}
 
@@ -321,12 +315,9 @@ func (coll *Collector) receiver(conn *net.UDPConn) {
 
 		if err != nil {
 			if conn != nil {
-				log.WithError(err).WithFields(map[string]interface{}{
-					"local":  conn.LocalAddr(),
-					"remote": conn.RemoteAddr(),
-				}).Error("ReadFromUDP failed")
+				slog.Error("ReadFromUDP failed", log.AttrError(err), "local", conn.LocalAddr(), "remote", conn.RemoteAddr())
 			} else {
-				log.WithError(err).Error("ReadFromUDP failed")
+				slog.Error("ReadFromUDP failed", log.AttrError(err))
 			}
 			return
 		}

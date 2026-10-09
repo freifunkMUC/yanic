@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
+	"codeberg.org/FreifunkBremen/yanic/data"
+	"codeberg.org/FreifunkBremen/yanic/runtime"
+
 	"github.com/influxdata/influxdb1-client/v2"
 	"github.com/stretchr/testify/assert"
-
-	"github.com/FreifunkBremen/yanic/data"
-	"github.com/FreifunkBremen/yanic/runtime"
 )
 
 const (

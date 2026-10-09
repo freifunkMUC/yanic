@@ -2,18 +2,26 @@ package all
 
 import (
 	"fmt"
+	"log/slog"
 
-	"github.com/bdlm/log"
-
-	"github.com/FreifunkBremen/yanic/output"
-	"github.com/FreifunkBremen/yanic/output/filter"
-	"github.com/FreifunkBremen/yanic/runtime"
+	"codeberg.org/FreifunkBremen/yanic/output"
+	"codeberg.org/FreifunkBremen/yanic/output/filter"
+	"codeberg.org/FreifunkBremen/yanic/runtime"
 )
 
 type Output struct {
 	output.Output
 	list         map[int]output.Output
 	outputFilter map[int]filter.Set
+}
+
+type ErrOutputTypeFromFormat struct {
+	outputType      string
+	configForOutput interface{}
+}
+
+func (e *ErrOutputTypeFromFormat) Error() string {
+	return fmt.Sprintf("the output type '%s' has the wrong format: read format %T should be an []map[string]interface{}", e.outputType, e.configForOutput)
 }
 
 func Register(configuration map[string]interface{}) (output.Output, error) {
@@ -24,12 +32,12 @@ func Register(configuration map[string]interface{}) (output.Output, error) {
 	for outputType, outputRegister := range output.Adapters {
 		configForOutput := allOutputs[outputType]
 		if configForOutput == nil {
-			log.WithField("output", outputType).Infof("no configuration found")
+			slog.Info("no configuration found", "output", outputType)
 			continue
 		}
 		outputConfigs, ok := configForOutput.([]map[string]interface{})
 		if !ok {
-			return nil, fmt.Errorf("the output type '%s' has the wrong format: read format %T should be an []map[string]interface{}", outputType, configForOutput)
+			return nil, &ErrOutputTypeFromFormat{outputType: outputType, configForOutput: configForOutput}
 		}
 		for _, config := range outputConfigs {
 			if c, ok := config["enable"].(bool); ok && !c {

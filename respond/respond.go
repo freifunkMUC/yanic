@@ -5,12 +5,13 @@ import (
 	"compress/flate"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net"
 
-	"github.com/bdlm/log"
 	"github.com/tidwall/gjson"
 
-	"github.com/FreifunkBremen/yanic/data"
+	"codeberg.org/FreifunkBremen/yanic/data"
+	"codeberg.org/FreifunkBremen/yanic/lib/log"
 )
 
 const (
@@ -38,7 +39,7 @@ func NewRespone(res *data.ResponseData, addr *net.UDPAddr) (*Response, error) {
 	}
 	defer func() {
 		if err := flater.Close(); err != nil {
-			log.WithError(err).Error("failed to close compression")
+			slog.Error("failed to close compression", log.AttrError(err))
 		}
 	}()
 
@@ -59,7 +60,7 @@ func (res *Response) parse(customFields []CustomFieldConfig) (*data.ResponseData
 	deflater := flate.NewReader(bytes.NewReader(res.Raw))
 	defer func() {
 		if err := deflater.Close(); err != nil {
-			log.WithError(err).Error("failed to close uncompression")
+			slog.Error("failed to close uncompression", log.AttrError(err))
 		}
 	}()
 	jsonData, err := io.ReadAll(deflater)
@@ -73,7 +74,7 @@ func (res *Response) parse(customFields []CustomFieldConfig) (*data.ResponseData
 
 	rdata.CustomFields = make(map[string]interface{})
 	if !gjson.Valid(string(jsonData)) {
-		log.WithField("jsonData", jsonData).Info("JSON data is invalid")
+		slog.Info("JSON data is invalid", "jsonData", jsonData)
 	} else {
 		jsonParsed := gjson.Parse(string(jsonData))
 		for _, customField := range customFields {

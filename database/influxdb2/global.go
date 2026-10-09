@@ -3,9 +3,9 @@ package influxdb
 import (
 	"time"
 
-	"github.com/FreifunkBremen/yanic/runtime"
+	"codeberg.org/FreifunkBremen/yanic/lib/log"
+	"codeberg.org/FreifunkBremen/yanic/runtime"
 
-	"github.com/bdlm/log"
 	influxdb "github.com/influxdata/influxdb-client-go/v2"
 )
 
@@ -62,7 +62,7 @@ func (conn *Connection) InsertGlobals(stats *runtime.GlobalStats, time time.Time
 func (conn *Connection) addCounterMap(writeName, name string, m runtime.CounterMap, t time.Time, site string, domain string) {
 	writeAPI, ok := conn.writeAPI[writeName]
 	if !ok {
-		log.WithField("writeName", writeName).Panic("no writeAPI found for countermap")
+		log.Panic("no writeAPI found for countermap", "writeName", writeName)
 	}
 	for key, count := range m {
 		p := influxdb.NewPoint("stat",

@@ -2,11 +2,11 @@ package meshviewer
 
 import (
 	"fmt"
+	"log/slog"
 
-	"github.com/bdlm/log"
-
-	"github.com/FreifunkBremen/yanic/output"
-	"github.com/FreifunkBremen/yanic/runtime"
+	"codeberg.org/FreifunkBremen/yanic/lib/log"
+	"codeberg.org/FreifunkBremen/yanic/output"
+	"codeberg.org/FreifunkBremen/yanic/runtime"
 )
 
 type Output struct {
@@ -25,7 +25,7 @@ func (c Config) Version() int64 {
 }
 func (c Config) NodesPath() string {
 	if c["nodes_path"] == nil {
-		log.Panic("in configuration of [[nodes.output.meshviewer]] was no nodes_path defined:\n", c)
+		log.Panic("in configuration of [[nodes.output.meshviewer]] was no nodes_path defined", slog.Any("config", c))
 	}
 	return c["nodes_path"].(string)
 }

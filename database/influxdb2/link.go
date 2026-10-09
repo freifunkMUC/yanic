@@ -3,7 +3,7 @@ package influxdb
 import (
 	"time"
 
-	"github.com/FreifunkBremen/yanic/runtime"
+	"codeberg.org/FreifunkBremen/yanic/runtime"
 
 	influxdb "github.com/influxdata/influxdb-client-go/v2"
 )

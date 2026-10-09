@@ -36,7 +36,7 @@ steps:
       GOARCH: amd64
     commands:
       - export FILENAME="yanic_$${GOARCH}_$${GOOS}"
-      - go build -ldflags "-X github.com/FreifunkBremen/yanic/cmd.VERSION=$(git describe --tags)" -v -o "$${FILENAME}"
+      - go build -ldflags "-X codeberg.org/FreifunkBremen/yanic/cmd.VERSION=$(git describe --tags)" -v -o "$${FILENAME}"
       - ./yanic_* version
 
   - name: container

@@ -4,15 +4,15 @@ stages:
   - test
 
 before_script:
-  - mkdir -p /go/src/github.com/FreifunkBremen/
-  - cp -R /builds/freifunkbremen/yanic /go/src/github.com/FreifunkBremen/yanic
-  - cd /go/src/github.com/FreifunkBremen/yanic
+  - mkdir -p /go/src/codeberg.org/FreifunkBremen/
+  - cp -R /builds/freifunkbremen/yanic /go/src/codeberg.org/FreifunkBremen/yanic
+  - cd /go/src/codeberg.org/FreifunkBremen/yanic
   - go get -t ./...
 
 build-my-project:
   stage: build
   script:
-    - go install -ldflags "-X github.com/FreifunkBremen/yanic/cmd.VERSION=`git -C $GOPATH/src/github.com/FreifunkBremen/yanic rev-parse HEAD`" github.com/FreifunkBremen/yanic
+    - go install -ldflags "-X codeberg.org/FreifunkBremen/yanic/cmd.VERSION=`git -C $GOPATH/src/codeberg.org/FreifunkBremen/yanic rev-parse HEAD`" codeberg.org/FreifunkBremen/yanic
     - mkdir /builds/freifunkbremen/yanic/bin/
     - cp /go/bin/yanic /builds/freifunkbremen/yanic/bin/yanic
   artifacts:

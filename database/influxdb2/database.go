@@ -2,12 +2,13 @@ package influxdb
 
 import (
 	"context"
+	"log/slog"
+
+	"codeberg.org/FreifunkBremen/yanic/database"
+	"codeberg.org/FreifunkBremen/yanic/lib/log"
 
 	influxdb "github.com/influxdata/influxdb-client-go/v2"
 	influxdbAPI "github.com/influxdata/influxdb-client-go/v2/api"
-
-	"github.com/FreifunkBremen/yanic/database"
-	"github.com/bdlm/log"
 )
 
 const (
@@ -47,30 +48,29 @@ func (c Config) Organization() string {
 	return ""
 }
 func (c Config) Bucket(measurement string) string {
-	logger := log.WithFields(map[string]interface{}{
-		"organization_id": c.Organization(),
-		"address":         c.Address(),
-		"measurement":     measurement,
-	})
+	logger := slog.With(
+		"organization_id", c.Organization(),
+		"address", c.Address(),
+		"measurement", measurement)
 	if d, ok := c["buckets"]; ok {
 		dMap := d.(map[string]interface{})
 		if d, ok := dMap[measurement]; ok {
 			bucket := d.(string)
-			logger.WithField("bucket", bucket).Info("get bucket for writeapi")
+			logger.Info("get bucket for writeapi", "bucket", bucket)
 			return bucket
 		}
 		if d, ok := c["bucket_default"]; ok {
 			bucket := d.(string)
-			logger.WithField("bucket", bucket).Info("get bucket for writeapi")
+			logger.Info("get bucket for writeapi", "bucket", bucket)
 			return bucket
 		}
 	}
 	if d, ok := c["bucket_default"]; ok {
 		bucket := d.(string)
-		logger.WithField("bucket", bucket).Info("get bucket for writeapi")
+		logger.Info("get bucket for writeapi", "bucket", bucket)
 		return bucket
 	}
-	logger.Panic("no bucket found for measurement")
+	log.PanicLogger(logger, "no bucket found for measurement")
 	return ""
 }
 func (c Config) Tags() map[string]string {

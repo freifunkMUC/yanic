@@ -1,15 +1,16 @@
 package cmd
 
 import (
+	"log/slog"
 	"os"
 
-	"github.com/BurntSushi/toml"
-	"github.com/bdlm/log"
+	"codeberg.org/FreifunkBremen/yanic/database"
+	"codeberg.org/FreifunkBremen/yanic/lib/log"
+	"codeberg.org/FreifunkBremen/yanic/respond"
+	"codeberg.org/FreifunkBremen/yanic/runtime"
+	"codeberg.org/FreifunkBremen/yanic/webserver"
 
-	"github.com/FreifunkBremen/yanic/database"
-	"github.com/FreifunkBremen/yanic/respond"
-	"github.com/FreifunkBremen/yanic/runtime"
-	"github.com/FreifunkBremen/yanic/webserver"
+	"github.com/BurntSushi/toml"
 )
 
 // Config represents the whole configuration
@@ -29,7 +30,7 @@ var (
 func loadConfig() *Config {
 	config, err := ReadConfigFile(configPath)
 	if err != nil {
-		log.WithError(err).Error("unable to load config file")
+		slog.Error("unable to load config file", log.AttrError(err))
 		os.Exit(2)
 	}
 	return config
@@ -45,7 +46,7 @@ func ReadConfigFile(path string) (config *Config, err error) {
 	}
 	defer func() {
 		if err := file.Close(); err != nil {
-			log.WithError(err).Error("failed to close after read config")
+			slog.Error("failed to close after read config", log.AttrError(err))
 		}
 	}()
 

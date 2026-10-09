@@ -2,12 +2,11 @@ package all
 
 import (
 	"fmt"
+	"log/slog"
 	"time"
 
-	"github.com/bdlm/log"
-
-	"github.com/FreifunkBremen/yanic/database"
-	"github.com/FreifunkBremen/yanic/runtime"
+	"codeberg.org/FreifunkBremen/yanic/database"
+	"codeberg.org/FreifunkBremen/yanic/runtime"
 )
 
 type Connection struct {
@@ -15,17 +14,26 @@ type Connection struct {
 	list []database.Connection
 }
 
+type ErrDatabaseTypeFromFormat struct {
+	dbType        string
+	configForType interface{}
+}
+
+func (e *ErrDatabaseTypeFromFormat) Error() string {
+	return fmt.Sprintf("the database type '%s' has the wrong format: read format %T should be an []map[string]interface{}", e.dbType, e.configForType)
+}
+
 func Connect(allConnection map[string]interface{}) (database.Connection, error) {
 	var list []database.Connection
 	for dbType, conn := range database.Adapters {
 		configForType := allConnection[dbType]
 		if configForType == nil {
-			log.WithField("database", dbType).Infof("no configuration found")
+			slog.Info("no configuration found", "database", dbType)
 			continue
 		}
 		dbConfigs, ok := configForType.([]map[string]interface{})
 		if !ok {
-			return nil, fmt.Errorf("the database type '%s' has the wrong format: read format %T should be an []map[string]interface{}", dbType, configForType)
+			return nil, &ErrDatabaseTypeFromFormat{dbType: dbType, configForType: configForType}
 		}
 
 		for _, config := range dbConfigs {
