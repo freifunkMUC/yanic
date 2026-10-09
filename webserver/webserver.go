@@ -10,9 +10,13 @@ import (
 
 // New creates a new webserver and starts it
 func New(bindAddr, webroot string) *http.Server {
+	mux := http.NewServeMux()
+	if webroot != "" {
+		mux.Handle("/", gziphandler.GzipHandler(http.FileServer(http.Dir(webroot))))
+	}
 	return &http.Server{
 		Addr:    bindAddr,
-		Handler: gziphandler.GzipHandler(http.FileServer(http.Dir(webroot))),
+		Handler: mux,
 	}
 }
 
