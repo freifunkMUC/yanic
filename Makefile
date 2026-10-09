@@ -14,3 +14,6 @@ coverage.html: coverage.out
 
 .PHONY: test
 test: coverage.out ## runs tests
+
+.PHONY: test-ci
+test-ci: coverage.print ## runs tests in ci

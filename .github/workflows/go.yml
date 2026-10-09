@@ -30,7 +30,7 @@ jobs:
             ${{ runner.os }}-${{ matrix.go-version }}-go-
 
       - name: Run tests
-        run: make test
+        run: make test-ci
 
       - uses: codecov/codecov-action@v5
         with:
