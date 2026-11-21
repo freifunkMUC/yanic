@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/FreifunkBremen/yanic/runtime"
+	"codeberg.org/FreifunkBremen/yanic/runtime"
 	"github.com/stretchr/testify/assert"
 )
 

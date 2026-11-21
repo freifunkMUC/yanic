@@ -9,8 +9,6 @@
     Yet another node info collector
 
 [![status-badge](https://ci.codeberg.org/api/badges/14886/status.svg)](https://ci.codeberg.org/repos/14886/branches/main)
-[![codecov](https://codecov.io/gh/FreifunkBremen/yanic/branch/main/graph/badge.svg)](https://codecov.io/gh/FreifunkBremen/yanic)
-[![Go Report Card](https://goreportcard.com/badge/github.com/FreifunkBremen/yanic)](https://goreportcard.com/report/github.com/FreifunkBremen/yanic)
 
 `yanic` is a respondd client that fetches, stores and publishes information about a Freifunk network.
 

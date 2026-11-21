@@ -1,12 +1,13 @@
 package graphite
 
 import (
+	"log/slog"
 	"sync"
 
-	"github.com/bdlm/log"
-	"github.com/fgrosse/graphigo"
+	"codeberg.org/FreifunkBremen/yanic/database"
+	"codeberg.org/FreifunkBremen/yanic/lib/log"
 
-	"github.com/FreifunkBremen/yanic/database"
+	"github.com/fgrosse/graphigo"
 )
 
 const (
@@ -59,7 +60,7 @@ func (c *Connection) Close() {
 	close(c.points)
 	if c.client.Connection != nil {
 		if err := c.client.Close(); err != nil {
-			log.WithError(err).Error("unable close connection")
+			slog.Error("unable close connection", log.AttrError(err))
 		}
 	}
 }
@@ -69,7 +70,7 @@ func (c *Connection) addWorker() {
 	defer c.Close()
 	for point := range c.points {
 		if err := c.client.SendAll(point); err != nil {
-			log.WithError(err).WithField("database", "graphite").Fatal("unable to store data")
+			log.Panic("unable to store data", log.AttrError(err), "database", "graphite")
 			return
 		}
 	}

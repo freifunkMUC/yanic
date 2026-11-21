@@ -10,10 +10,9 @@ import (
 	"os"
 	"time"
 
-	logger "github.com/bdlm/log"
-
-	"github.com/FreifunkBremen/yanic/database"
-	"github.com/FreifunkBremen/yanic/runtime"
+	"codeberg.org/FreifunkBremen/yanic/database"
+	"codeberg.org/FreifunkBremen/yanic/lib/log"
+	"codeberg.org/FreifunkBremen/yanic/runtime"
 )
 
 type Connection struct {
@@ -101,6 +100,6 @@ func (conn *Connection) PruneNodes(deleteAfter time.Duration) {
 func (conn *Connection) Close() {
 	conn.logger.Info("Close")
 	if err := conn.file.Close(); err != nil {
-		logger.WithError(err).Error("unable to close connection")
+		slog.Error("unable to close connection", log.AttrError(err))
 	}
 }

@@ -9,7 +9,7 @@ COPY . .
 # ge dependencies
 RUN go mod tidy
 # build binary
-RUN CGO_ENABLED=0 go build -ldflags="-X github.com/FreifunkBremen/yanic/cmd.VERSION=$VERSION -w -s" -o yanic
+RUN CGO_ENABLED=0 go build -ldflags="-X codeberg.org/FreifunkBremen/yanic/cmd.VERSION=$VERSION -w -s" -o yanic
 
 
 ##

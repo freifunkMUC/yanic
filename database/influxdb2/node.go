@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/FreifunkBremen/yanic/runtime"
+	"codeberg.org/FreifunkBremen/yanic/runtime"
 
 	influxdb "github.com/influxdata/influxdb-client-go/v2"
 )
@@ -28,14 +28,14 @@ func (conn *Connection) InsertNode(node *runtime.Node) {
 			"load":             stats.LoadAverage,
 			"time.up":          int64(stats.Uptime),
 			"time.idle":        int64(stats.Idletime),
-			"proc.running":     stats.Processes.Running,
-			"clients.wifi":     stats.Clients.Wifi,
-			"clients.wifi24":   stats.Clients.Wifi24,
-			"clients.wifi5":    stats.Clients.Wifi5,
-			"clients.owe":      stats.Clients.OWE,
-			"clients.owe24":    stats.Clients.OWE24,
-			"clients.owe5":     stats.Clients.OWE5,
-			"clients.total":    stats.Clients.Total,
+			"proc.running":     int64(stats.Processes.Running),
+			"clients.wifi":     int64(stats.Clients.Wifi),
+			"clients.wifi24":   int64(stats.Clients.Wifi24),
+			"clients.wifi5":    int64(stats.Clients.Wifi5),
+			"clients.owe":      int64(stats.Clients.OWE),
+			"clients.owe24":    int64(stats.Clients.OWE24),
+			"clients.owe5":     int64(stats.Clients.OWE5),
+			"clients.total":    int64(stats.Clients.Total),
 			"memory.buffers":   stats.Memory.Buffers,
 			"memory.cached":    stats.Memory.Cached,
 			"memory.free":      stats.Memory.Free,
@@ -65,8 +65,8 @@ func (conn *Connection) InsertNode(node *runtime.Node) {
 			p.AddTag("owner", owner.Contact)
 		}
 		if wireless := nodeinfo.Wireless; wireless != nil {
-			p.AddField("wireless.txpower24", wireless.TxPower24)
-			p.AddField("wireless.txpower5", wireless.TxPower5)
+			p.AddField("wireless.txpower24", int64(wireless.TxPower24))
+			p.AddField("wireless.txpower5", int64(wireless.TxPower5))
 		}
 		// Hardware
 		p.AddTag("model", nodeinfo.Hardware.Model)
@@ -163,8 +163,8 @@ func (conn *Connection) InsertNode(node *runtime.Node) {
 		p.AddField("airtime"+suffix+".chan_util", airtime.ChanUtil)
 		p.AddField("airtime"+suffix+".rx_util", airtime.RxUtil)
 		p.AddField("airtime"+suffix+".tx_util", airtime.TxUtil)
-		p.AddField("airtime"+suffix+".noise", airtime.Noise)
-		p.AddField("airtime"+suffix+".frequency", airtime.Frequency)
+		p.AddField("airtime"+suffix+".noise", int64(airtime.Noise))
+		p.AddField("airtime"+suffix+".frequency", int64(airtime.Frequency))
 		p.AddTag("frequency"+suffix, strconv.Itoa(int(airtime.Frequency)))
 	}
 
@@ -175,17 +175,17 @@ func (conn *Connection) InsertNode(node *runtime.Node) {
 		p := influxdb.NewPoint(MeasurementDHCP,
 			conn.config.Tags(),
 			map[string]interface{}{
-				"decline":  dhcp.Decline,
-				"offer":    dhcp.Offer,
-				"ack":      dhcp.Ack,
-				"nak":      dhcp.Nak,
-				"request":  dhcp.Request,
-				"discover": dhcp.Discover,
-				"inform":   dhcp.Inform,
-				"release":  dhcp.Release,
+				"decline":  int64(dhcp.Decline),
+				"offer":    int64(dhcp.Offer),
+				"ack":      int64(dhcp.Ack),
+				"nak":      int64(dhcp.Nak),
+				"request":  int64(dhcp.Request),
+				"discover": int64(dhcp.Discover),
+				"inform":   int64(dhcp.Inform),
+				"release":  int64(dhcp.Release),
 
-				"leases.allocated": dhcp.LeasesAllocated,
-				"leases.pruned":    dhcp.LeasesPruned,
+				"leases.allocated": int64(dhcp.LeasesAllocated),
+				"leases.pruned":    int64(dhcp.LeasesPruned),
 			}, time).
 			AddTag("nodeid", stats.NodeID)
 

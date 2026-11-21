@@ -3,15 +3,15 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net"
 	"strings"
 	"time"
 
-	"github.com/bdlm/log"
-	"github.com/spf13/cobra"
+	"codeberg.org/FreifunkBremen/yanic/respond"
+	"codeberg.org/FreifunkBremen/yanic/runtime"
 
-	"github.com/FreifunkBremen/yanic/respond"
-	"github.com/FreifunkBremen/yanic/runtime"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -30,10 +30,9 @@ var queryCmd = &cobra.Command{
 		ifaces := strings.Split(args[0], ",")
 		dstAddress := net.ParseIP(args[1])
 
-		log.WithFields(map[string]interface{}{
-			"address": dstAddress,
-			"ifaces":  ifaces,
-		}).Info("sending request")
+		slog.Info("sending request",
+			"address", dstAddress,
+			"ifaces", ifaces)
 
 		var ifacesConfigs []respond.InterfaceConfig
 		for _, iface := range ifaces {

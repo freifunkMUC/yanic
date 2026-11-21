@@ -2,16 +2,24 @@ package cmd
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 
-	"github.com/bdlm/log"
-	"github.com/bdlm/std/logger"
+	"github.com/ThreeDotsLabs/humanslog"
 	"github.com/spf13/cobra"
 )
 
 var (
+	logFormat  string
+	logSource  bool
 	timestamps bool
-	loglevel   uint32
+	logLevel   slog.Level
+)
+
+const (
+	logFormatJSON  = "json"
+	logFormatText  = "text"
+	logFormatHuman = "human"
 )
 
 // RootCmd represents the base command when called without any subcommands
@@ -36,13 +44,35 @@ func init() {
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
+	RootCmd.PersistentFlags().StringVar(&logFormat, "log-format", logFormatJSON, "log output in (json,text,human)")
+	RootCmd.PersistentFlags().BoolVar(&logSource, "log-source", false, "log with line of code")
 	RootCmd.PersistentFlags().BoolVar(&timestamps, "timestamps", false, "Enables timestamps for log output")
-	RootCmd.PersistentFlags().Uint32Var(&loglevel, "loglevel", 40, "Show log message starting at level")
+	RootCmd.PersistentFlags().TextVar(&logLevel, "log-level", slog.LevelInfo, "Show log message starting at level (debug,info,warn,error)")
 }
 
 func initConfig() {
-	log.SetLevel(logger.Level(loglevel))
-	log.SetFormatter(&log.TextFormatter{
-		DisableTimestamp: timestamps,
-	})
+	handlerOption := &slog.HandlerOptions{
+		Level:     logLevel,
+		AddSource: logSource,
+	}
+	if !timestamps {
+		handlerOption.ReplaceAttr = func(groups []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.TimeKey {
+				return slog.Attr{}
+			}
+			return a
+		}
+	}
+	var h slog.Handler
+	switch logFormat {
+	case logFormatHuman:
+		h = humanslog.NewHandler(os.Stdout, &humanslog.Options{
+			HandlerOptions: handlerOption,
+		})
+	case logFormatText:
+		h = slog.NewTextHandler(os.Stdout, handlerOption)
+	default:
+		h = slog.NewJSONHandler(os.Stdout, handlerOption)
+	}
+	slog.SetDefault(slog.New(h))
 }

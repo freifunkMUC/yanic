@@ -2,14 +2,15 @@ package influxdb
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"strconv"
 	"time"
 
+	"codeberg.org/FreifunkBremen/yanic/lib/log"
+	"codeberg.org/FreifunkBremen/yanic/runtime"
+
 	models "github.com/influxdata/influxdb1-client/models"
 	client "github.com/influxdata/influxdb1-client/v2"
-
-	"github.com/FreifunkBremen/yanic/runtime"
 )
 
 // PruneNodes prunes historical per-node data
@@ -17,7 +18,7 @@ func (conn *Connection) PruneNodes(deleteAfter time.Duration) {
 	for _, measurement := range []string{MeasurementNode, MeasurementLink} {
 		query := fmt.Sprintf("delete from %s where time < now() - %ds", measurement, deleteAfter/time.Second)
 		if _, err := conn.client.Query(client.NewQuery(query, conn.config.Database(), "m")); err != nil {
-			log.Println(err)
+			slog.Error("prune nodes", log.AttrError(err), "database", "influxdb")
 		}
 	}
 

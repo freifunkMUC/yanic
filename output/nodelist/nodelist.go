@@ -1,8 +1,8 @@
 package nodelist
 
 import (
-	"github.com/FreifunkBremen/yanic/lib/jsontime"
-	"github.com/FreifunkBremen/yanic/runtime"
+	"codeberg.org/FreifunkBremen/yanic/lib/jsontime"
+	"codeberg.org/FreifunkBremen/yanic/runtime"
 )
 
 // NodeList rewritten after: https://github.com/ffnord/ffmap-backend/blob/c33ebf62f013e18bf71b5a38bd058847340db6b7/lib/nodelist.py

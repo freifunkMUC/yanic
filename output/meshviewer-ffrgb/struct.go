@@ -3,8 +3,8 @@ package meshviewerFFRGB
 import (
 	"time"
 
-	"github.com/FreifunkBremen/yanic/lib/jsontime"
-	"github.com/FreifunkBremen/yanic/runtime"
+	"codeberg.org/FreifunkBremen/yanic/lib/jsontime"
+	"codeberg.org/FreifunkBremen/yanic/runtime"
 )
 
 type Meshviewer struct {
@@ -71,13 +71,15 @@ type Location struct {
 
 // Link
 type Link struct {
-	Type          string  `json:"type"`
-	Source        string  `json:"source"`
-	Target        string  `json:"target"`
-	SourceTQ      float32 `json:"source_tq"`
-	TargetTQ      float32 `json:"target_tq"`
-	SourceAddress string  `json:"source_addr"`
-	TargetAddress string  `json:"target_addr"`
+	Type             string   `json:"type"`
+	Source           string   `json:"source"`
+	Target           string   `json:"target"`
+	SourceTQ         *float32 `json:"source_tq,omitempty"`
+	TargetTQ         *float32 `json:"target_tq,omitempty"`
+	SourceThroughput *uint32  `json:"source_tp,omitempty"`
+	TargetThroughput *uint32  `json:"target_tp,omitempty"`
+	SourceAddress    string   `json:"source_addr"`
+	TargetAddress    string   `json:"target_addr"`
 }
 
 func NewNode(nodes *runtime.Nodes, n *runtime.Node) *Node {
@@ -142,7 +144,7 @@ func NewNode(nodes *runtime.Nodes, n *runtime.Node) *Node {
 		/* The Meshviewer could not handle absolute memory output
 		 * calc the used memory as a float which 100% equal 1.0
 		 * calc is coppied from node statuspage (look discussion:
-		 * https://github.com/FreifunkBremen/yanic/issues/35 and
+		 * https://codeberg.org/FreifunkBremen/yanic/issues/35 and
 		 * https://github.com/freifunk-gluon/gluon/pull/1517)
 		 */
 		if statistic.Memory.Total > 0 {

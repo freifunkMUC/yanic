@@ -1,7 +1,7 @@
 # Quick Configuration
 
 ```sh
-cp /opt/go/src/github.com/FreifunkBremen/yanic/config_example.toml /etc/yanic.conf
+cp /opt/go/src/codeberg.org/FreifunkBremen/yanic/config_example.toml /etc/yanic.conf
 ```
 
 ## Configuration

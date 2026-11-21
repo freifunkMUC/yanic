@@ -3,8 +3,8 @@ package geojson
 import (
 	"errors"
 
-	"github.com/FreifunkBremen/yanic/output"
-	"github.com/FreifunkBremen/yanic/runtime"
+	"codeberg.org/FreifunkBremen/yanic/output"
+	"codeberg.org/FreifunkBremen/yanic/runtime"
 )
 
 type Output struct {

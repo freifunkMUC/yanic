@@ -9,8 +9,6 @@ Yet another node info collector
 ```
 
 [![status-badge](https://ci.codeberg.org/api/badges/14886/status.svg)](https://ci.codeberg.org/repos/14886/branches/main)
-[![codecov](https://codecov.io/gh/FreifunkBremen/yanic/branch/main/graph/badge.svg)](https://codecov.io/gh/FreifunkBremen/yanic)
-[![Go Report Card](https://goreportcard.com/badge/github.com/FreifunkBremen/yanic)](https://goreportcard.com/report/github.com/FreifunkBremen/yanic)
 
 `yanic` is a respondd client that fetches, stores and publishes information about a Freifunk network. The goals:
 * Generating JSON for [Meshviewer](https://github.com/ffrgb/meshviewer)
@@ -22,7 +20,7 @@ In the first step Yanic sends a multicast message to the group `ff05::2:1001` an
 Recently seen nodes that does not reply are requested via a unicast message.
 
 ## Documentation
-Take a look at the [git](https://github.com/FreifunkBremen/yanic/blob/main/SUMMARY.md) or [website](https://freifunkbremen.github.io/yanic/)
+Take a look at the [git](https://codeberg.org/FreifunkBremen/yanic/src/branch/main/docs) or [website](https://freifunkbremen.codeberg.page/yanic/)
 
 # Installation
 Take a look into the Documentation (see above) or for Quick Overview in [INSTALL.md](INSTALL.md).
@@ -38,19 +36,25 @@ Yanic provides several commands:
 ### Usage
 Run Yanic without any arguments to get the usage information:
 ```
+A respondd client that fetches, stores and publishes information about a Freifunk network.
+
 Usage:
   yanic [command]
 
 Available Commands:
+  completion  Generate the autocompletion script for the specified shell
   help        Help about any command
   import      Imports global statistics from the given RRD files, requires InfluxDB
   query       Sends a query on the interface to the destination and waits for a response
   serve       Runs the yanic server
+  version     print version of yanic
 
 Flags:
-  -h, --help              help for yanic
-      --loglevel uint32   Show log message starting at level (default 40)
-      --timestamps        Enables timestamps for log output
+  -h, --help                help for yanic
+      --log-format string   log output in (json,text,human) (default "json")
+      --log-level           Show log message starting at level (debug,info,warn,error) (default INFO)
+      --log-source          log with line of code
+      --timestamps          Enables timestamps for log output
 
 Use "yanic [command] --help" for more information about a command.
 ```
@@ -69,8 +73,10 @@ Flags:
   -h, --help            help for serve
 
 Global Flags:
-      --loglevel uint32   Show log message starting at level (default 40)
-      --timestamps        Enables timestamps for log output
+      --log-format string   log output in (json,text,human) (default "json")
+      --log-level           Show log message starting at level (debug,info,warn,error) (default INFO)
+      --log-source          log with line of code
+      --timestamps          Enables timestamps for log output
 ```
 
 #### Query
@@ -89,12 +95,14 @@ Flags:
       --wait int    Seconds to wait for a response (default 1)
 
 Global Flags:
-      --loglevel uint32   Show log message starting at level (default 40)
-      --timestamps        Enables timestamps for log output
+      --log-format string   log output in (json,text,human) (default "json")
+      --log-level           Show log message starting at level (debug,info,warn,error) (default INFO)
+      --log-source          log with line of code
+      --timestamps          Enables timestamps for log output
 ```
 
 #### Import
-Imports global statistics from the given RRD files (ffmap-backend).
+Imports global statistics from the given RRD files, requires InfluxDB
 ```
 Usage:
   yanic import <file.rrd> <site> <domain> [flags]
@@ -107,8 +115,10 @@ Flags:
   -h, --help            help for import
 
 Global Flags:
-      --loglevel uint32   Show log message starting at level (default 40)
-      --timestamps        Enables timestamps for log output
+      --log-format string   log output in (json,text,human) (default "json")
+      --log-level           Show log message starting at level (debug,info,warn,error) (default INFO)
+      --log-source          log with line of code
+      --timestamps          Enables timestamps for log output
 ```
 
 
@@ -121,7 +131,7 @@ Global Flags:
 * **Freifunk Rhein-Sieg e.V.** uses InfluxDB, [Grafana](https://grafana.freifunk-rhein-sieg.net/), [Meshviewer](https://map.freifunk-rhein-sieg.net/) - see [Github](https://github.com/Freifunk-Rhein-Sieg/Ansible-FFlo)
 * **Freifunk Ingolstadt** uses InfluxDB, [Grafana](https://grafana.freifunk-ingolstadt.de/), [Meshviewer](https://map.freifunk-ingolstadt.de/) - see https://git.bingo-ev.de/freifunk/mapserver-docker
 
-Do you know someone else using Yanic? Create a [pull request](https://github.com/FreifunkBremen/yanic/issues/new?template=community.md&title=Mention+community+$name)!
+Do you know someone else using Yanic? Create a [pull request](https://codeberg.org/FreifunkBremen/yanic/issues/new?template=.github%2fISSUE_TEMPLATE%2fcommunity.md)!
 
 ## Related projects
 Collecting data from respondd:

@@ -1,12 +1,12 @@
 package filter
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
 
-	"github.com/bdlm/log"
-	"github.com/pkg/errors"
-
-	"github.com/FreifunkBremen/yanic/runtime"
+	"codeberg.org/FreifunkBremen/yanic/lib/log"
+	"codeberg.org/FreifunkBremen/yanic/runtime"
 )
 
 // factory function for building a filter
@@ -23,26 +23,48 @@ type Set []Filter
 
 var filters = make(map[string]factory)
 
+// filters which rewrite the node, they run before all other filters
+var rewriteFilters = []string{"domain_as_site", "domain_append_site"}
+
+func order(name string) int {
+	if i := slices.Index(rewriteFilters, name); i >= 0 {
+		return i
+	}
+	return len(rewriteFilters)
+}
+
 // Register registers a new filter
 func Register(name string, f factory) {
 	if _, ok := filters[name]; ok {
-		log.WithField("filter", name).Panic("filter already registered")
+		log.Panic("filter already registered", "name", name)
 	}
 	filters[name] = f
 }
 
 // New returns and initializes a set of filters
 func New(configs map[string]interface{}) (set Set, errs []error) {
-	for name, config := range configs {
+	names := make([]string, 0, len(configs))
+	for name := range configs {
+		names = append(names, name)
+	}
+	slices.SortFunc(names, func(a, b string) int {
+		if c := cmp.Compare(order(a), order(b)); c != 0 {
+			return c
+		}
+		return cmp.Compare(a, b)
+	})
+
+	for _, name := range names {
+		config := configs[name]
 		if config == nil {
-			return
+			continue
 		}
 
 		f := filters[name]
 		if f == nil {
 			errs = append(errs, fmt.Errorf("unknown filter: %s", name))
 		} else if filter, err := f(config); err != nil {
-			errs = append(errs, errors.Wrapf(err, "unable to initialize filter %s", name))
+			errs = append(errs, fmt.Errorf("%v: unable to initialize filter %s", err, name))
 		} else if filter != nil {
 			set = append(set, filter)
 		}
@@ -54,12 +76,12 @@ func New(configs map[string]interface{}) (set Set, errs []error) {
 func (set Set) Apply(nodesOrigin *runtime.Nodes) *runtime.Nodes {
 	nodes := runtime.NewNodes(&runtime.NodesConfig{})
 
-	nodesOrigin.Lock()
-	defer nodesOrigin.Unlock()
+	nodesOrigin.RLock()
+	defer nodesOrigin.RUnlock()
 
 	for _, nodeOrigin := range nodesOrigin.List {
-		//maybe cloning of this object is better?
-		node := nodeOrigin
+		nodeCopy := *nodeOrigin
+		node := &nodeCopy
 		for _, filter := range set {
 			node = filter.Apply(node)
 			if node == nil {

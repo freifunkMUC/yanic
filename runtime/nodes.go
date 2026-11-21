@@ -2,14 +2,14 @@ package runtime
 
 import (
 	"encoding/json"
+	"log/slog"
 	"os"
 	"sync"
 	"time"
 
-	"github.com/bdlm/log"
-
-	"github.com/FreifunkBremen/yanic/data"
-	"github.com/FreifunkBremen/yanic/lib/jsontime"
+	"codeberg.org/FreifunkBremen/yanic/data"
+	"codeberg.org/FreifunkBremen/yanic/lib/jsontime"
+	"codeberg.org/FreifunkBremen/yanic/lib/log"
 )
 
 // Nodes struct: cache DB of Node's structs
@@ -60,6 +60,7 @@ func (nodes *Nodes) Update(nodeID string, res *data.ResponseData) *Node {
 	now := jsontime.Now()
 
 	nodes.Lock()
+	defer nodes.Unlock()
 	node := nodes.List[nodeID]
 
 	if node == nil {
@@ -71,7 +72,6 @@ func (nodes *Nodes) Update(nodeID string, res *data.ResponseData) *Node {
 	if res.Nodeinfo != nil {
 		nodes.readIfaces(res.Nodeinfo, res.Neighbours, true)
 	}
-	nodes.Unlock()
 
 	// Update wireless statistics
 	if statistics := res.Statistics; statistics != nil {
@@ -129,6 +129,7 @@ func (nodes *Nodes) NodeLinks(node *Node) (result []Link) {
 					TargetID:      neighbourID,
 					TargetAddress: neighbourMAC,
 					TQ:            float32(link.TQ) / 255.0,
+					Throughput:    link.Throughput,
 				}
 
 				if neighbourExists && neighbour.Nodeinfo != nil {
@@ -232,7 +233,7 @@ func updateIface[K string | LinkProtocol | LinkType](class string, addr string, 
 	if oldValue := dataMap[addr]; oldValue != value {
 		var empty K
 		if oldValue != empty && warning {
-			log.Warnf("override %s from %s to %s on %s", class, oldValue, value, addr)
+			slog.Warn("detect unexpected change of value", "class", class, "value-old", oldValue, "value-new", value, "addr", addr)
 		}
 		dataMap[addr] = value
 	}
@@ -244,7 +245,7 @@ func (nodes *Nodes) readIfaces(nodeinfo *data.Nodeinfo, neighbours *data.Neighbo
 	network := nodeinfo.Network
 
 	if nodeID == "" {
-		log.Warn("nodeID missing in nodeinfo")
+		slog.Warn("nodeID missing in nodeinfo")
 		return
 	}
 
@@ -300,7 +301,7 @@ func (nodes *Nodes) load() {
 
 	if f, err := os.Open(path); err == nil { // transform data to legacy meshviewer
 		if err = json.NewDecoder(f).Decode(nodes); err == nil {
-			log.Infof("loaded %d nodes", len(nodes.List))
+			slog.Info("loaded nodes", "count", len(nodes.List))
 
 			nodes.Lock()
 			for _, node := range nodes.List {
@@ -311,10 +312,10 @@ func (nodes *Nodes) load() {
 			nodes.Unlock()
 
 		} else {
-			log.WithError(err).Error("failed to unmarshal nodes")
+			slog.Error("failed to unmarshal nodes", log.AttrError(err))
 		}
 	} else {
-		log.WithError(err).Error("failed to load cached nodes")
+		slog.Error("failed to load cached nodes", log.AttrError(err))
 	}
 }
 
@@ -333,19 +334,19 @@ func SaveJSON(input interface{}, outputFile string) {
 
 	f, err := os.OpenFile(tmpFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		log.Panic(err)
+		log.Panic("open temporary file to save", log.AttrError(err))
 	}
 
 	err = json.NewEncoder(f).Encode(input)
 	if err != nil {
-		log.Panic(err)
+		log.Panic("write json to file", log.AttrError(err))
 	}
 
 	if err := f.Close(); err != nil {
-		log.WithError(err).Error("failed to close after save")
+		slog.Error("failed to close after save", log.AttrError(err))
 	}
 	if err := os.Rename(tmpFile, outputFile); err != nil {
-		log.Panic(err)
+		log.Panic("move temporary file to correct place", log.AttrError(err))
 	}
 }
 
@@ -355,20 +356,20 @@ func SaveJSONL(input []interface{}, outputFile string) {
 
 	f, err := os.OpenFile(tmpFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		log.Panic(err)
+		log.Panic("open temporary file to save", log.AttrError(err))
 	}
 
 	for _, element := range input {
 		err = json.NewEncoder(f).Encode(element)
 		if err != nil {
-			log.Panic(err)
+			log.Panic("write json to file", err)
 		}
 	}
 
 	if err := f.Close(); err != nil {
-		log.WithError(err).Error("failed to close after save")
+		slog.Error("failed to close after save", log.AttrError(err))
 	}
 	if err := os.Rename(tmpFile, outputFile); err != nil {
-		log.Panic(err)
+		log.Panic("move temporary file to correct place", log.AttrError(err))
 	}
 }

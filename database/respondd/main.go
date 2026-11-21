@@ -7,14 +7,14 @@ import (
 	"bufio"
 	"compress/flate"
 	"encoding/json"
+	"log/slog"
 	"net"
 	"time"
 
-	"github.com/bdlm/log"
-
-	"github.com/FreifunkBremen/yanic/data"
-	"github.com/FreifunkBremen/yanic/database"
-	"github.com/FreifunkBremen/yanic/runtime"
+	"codeberg.org/FreifunkBremen/yanic/data"
+	"codeberg.org/FreifunkBremen/yanic/database"
+	"codeberg.org/FreifunkBremen/yanic/lib/log"
+	"codeberg.org/FreifunkBremen/yanic/runtime"
 )
 
 type Connection struct {
@@ -33,11 +33,11 @@ func (c Config) Address() string {
 	return c["address"].(string)
 }
 
-var logger *log.Entry
+var logger *slog.Logger
 
 func init() {
 	database.RegisterAdapter("respondd", Connect)
-	logger = log.WithField("type", "database-yanic")
+	logger = slog.With("type", "database-yanic")
 }
 
 func Connect(configuration map[string]interface{}) (database.Connection, error) {
@@ -62,12 +62,12 @@ func (conn *Connection) InsertNode(node *runtime.Node) {
 
 	flater, err := flate.NewWriter(writer, flate.BestCompression)
 	if err != nil {
-		logger.WithError(err).Error("could not create flater")
+		logger.Error("could not create flater", log.AttrError(err))
 		return
 	}
 	defer func() {
 		if err := flater.Close(); err != nil {
-			logger.WithError(err).Error("could not close flater")
+			logger.Error("could not close flater", log.AttrError(err))
 		}
 	}()
 	err = json.NewEncoder(flater).Encode(res)
@@ -76,16 +76,16 @@ func (conn *Connection) InsertNode(node *runtime.Node) {
 		if node.Nodeinfo != nil && node.Nodeinfo.NodeID != "" {
 			nodeid = node.Nodeinfo.NodeID
 		}
-		logger.WithError(err).WithField("node_id", nodeid).Error("could not encode node")
+		logger.Error("could not encode node", log.AttrError(err), "node_id", nodeid)
 		return
 	}
 	err = flater.Flush()
 	if err != nil {
-		logger.WithError(err).Error("could not compress")
+		logger.Error("could not compress", log.AttrError(err))
 	}
 	err = writer.Flush()
 	if err != nil {
-		logger.WithError(err).Error("could not send")
+		logger.Error("could not send", log.AttrError(err))
 	}
 }
 
@@ -100,6 +100,6 @@ func (conn *Connection) PruneNodes(deleteAfter time.Duration) {
 
 func (conn *Connection) Close() {
 	if err := conn.conn.Close(); err != nil {
-		logger.WithError(err).Error("cound not close socket")
+		logger.Error("cound not close socket", log.AttrError(err))
 	}
 }

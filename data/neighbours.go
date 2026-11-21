@@ -18,8 +18,9 @@ type WifiLink struct {
 
 // BatmanLink struct
 type BatmanLink struct {
-	Lastseen float64 `json:"lastseen"`
-	TQ       int     `json:"tq"`
+	Lastseen   float64 `json:"lastseen"`
+	TQ         int     `json:"tq"`
+	Throughput *uint32 `json:"throughput,omitempty"` // kbit/s; nil for Batman IV, non-nil for Batman V (even 0)
 }
 
 // BabelLink struct

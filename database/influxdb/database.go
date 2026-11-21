@@ -1,16 +1,17 @@
 package influxdb
 
 import (
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
 	"unicode"
 
-	"github.com/bdlm/log"
+	"codeberg.org/FreifunkBremen/yanic/database"
+	"codeberg.org/FreifunkBremen/yanic/lib/log"
+
 	"github.com/influxdata/influxdb1-client/models"
 	client "github.com/influxdata/influxdb1-client/v2"
-
-	"github.com/FreifunkBremen/yanic/database"
 )
 
 const (
@@ -121,10 +122,7 @@ func (conn *Connection) addPoint(name string, tags models.Tags, fields models.Fi
 			if value, ok := valueInterface.(string); ok && tags.Get([]byte(tag)) == nil {
 				tags.SetString(tag, value)
 			} else {
-				log.WithFields(map[string]interface{}{
-					"name": name,
-					"tag":  tag,
-				}).Warnf("could not save tag configuration on point")
+				slog.Warn("could not save tag configuration on point", "name", name, "tag", tag)
 			}
 		}
 	}
@@ -133,7 +131,7 @@ func (conn *Connection) addPoint(name string, tags models.Tags, fields models.Fi
 
 	point, err := client.NewPoint(name, tags.Map(), fields, t...)
 	if err != nil {
-		log.Panicf("could not save points: %s", err)
+		log.Panic("could not save points", log.AttrError(err))
 	}
 	conn.points <- point
 }
@@ -143,7 +141,7 @@ func (conn *Connection) Close() {
 	close(conn.points)
 	conn.wg.Wait()
 	if err := conn.client.Close(); err != nil {
-		log.WithError(err).Error("during close connection")
+		slog.Error("during close connection", log.AttrError(err))
 	}
 }
 
@@ -168,7 +166,7 @@ func (conn *Connection) addWorker() {
 					// create new batch
 					timer.Reset(batchTimeout)
 					if bp, err = client.NewBatchPoints(bpConfig); err != nil {
-						log.WithError(err).Fatal("not able to create new batch for points")
+						log.Panic("not able to create new batch for points", log.AttrError(err))
 					}
 				}
 				bp.AddPoint(point)
@@ -185,10 +183,10 @@ func (conn *Connection) addWorker() {
 
 		// write batch now?
 		if bp != nil && (writeNow || closed || len(bp.Points()) >= batchMaxSize) {
-			log.WithField("count", len(bp.Points())).Info("saving points")
+			slog.Info("saving points", "count", len(bp.Points()))
 
 			if err = conn.client.Write(bp); err != nil {
-				log.WithError(err).Error("not able to write batch of points")
+				slog.Error("not able to write batch of points", log.AttrError(err))
 			}
 			writeNow = false
 			bp = nil

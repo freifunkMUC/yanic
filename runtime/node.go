@@ -3,8 +3,8 @@ package runtime
 import (
 	"net"
 
-	"github.com/FreifunkBremen/yanic/data"
-	"github.com/FreifunkBremen/yanic/lib/jsontime"
+	"codeberg.org/FreifunkBremen/yanic/data"
+	"codeberg.org/FreifunkBremen/yanic/lib/jsontime"
 )
 
 // Node struct

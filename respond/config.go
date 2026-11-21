@@ -1,6 +1,6 @@
 package respond
 
-import "github.com/FreifunkBremen/yanic/lib/duration"
+import "codeberg.org/FreifunkBremen/yanic/lib/duration"
 
 type Config struct {
 	Enable          bool                  `toml:"enable"`

@@ -3,8 +3,8 @@ package noowner
 import (
 	"testing"
 
-	"github.com/FreifunkBremen/yanic/data"
-	"github.com/FreifunkBremen/yanic/runtime"
+	"codeberg.org/FreifunkBremen/yanic/data"
+	"codeberg.org/FreifunkBremen/yanic/runtime"
 	"github.com/stretchr/testify/assert"
 )
 
