@@ -32,6 +32,8 @@ type Connection struct {
 	client client.Client
 	points chan *client.Point
 	wg     sync.WaitGroup
+
+	metricMeasurements sync.Map // measurements of [respondd.metrics] points, for pruning
 }
 
 type Config map[string]interface{}

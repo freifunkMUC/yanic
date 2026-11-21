@@ -1,6 +1,7 @@
 package influxdb
 
 import (
+	"math"
 	"testing"
 
 	"codeberg.org/FreifunkBremen/yanic/data"
@@ -242,4 +243,54 @@ func testPoints(nodes ...*runtime.Node) (points []*client.Point) {
 	}
 
 	return
+}
+
+func TestToInfluxMetrics(t *testing.T) {
+	assert := assert.New(t)
+
+	node := &runtime.Node{
+		Statistics: &data.Statistics{NodeID: "deadbeef", Clients: data.Clients{Total: 3}},
+		Nodeinfo:   &data.Nodeinfo{NodeID: "deadbeef", Hostname: "node1", System: data.System{SiteCode: "ffmuc"}},
+		Metrics: []data.MetricPoint{
+			{Measurement: "mesh_vpn_peer", Tags: map[string]string{"group": "muc01", "peer": "pgw-01"}, Fields: map[string]float64{"established": 3600, "method": 1}},
+			{Measurement: "clat", Tags: map[string]string{"direction": "v4_to_v6"}, Fields: map[string]float64{"packets": 1200, "bad name": 1, "nan": math.NaN(), "inf": math.Inf(1)}},
+			// all of these points are dropped
+			{Measurement: "node", Fields: map[string]float64{"clients.total": 999}},
+			{Measurement: "x\nnode", Fields: map[string]float64{"v": 1}},
+			{Measurement: "x", Tags: map[string]string{"peer": "a b"}, Fields: map[string]float64{"v": 1}},
+			{Measurement: "x", Tags: map[string]string{"peer": "a\nnode,nodeid=evil v=1"}, Fields: map[string]float64{"v": 1}},
+			{Measurement: "x", Tags: map[string]string{"nodeid": "evil"}, Fields: map[string]float64{"v": 1}},
+			{Measurement: "x", Tags: map[string]string{"Bad": "a"}, Fields: map[string]float64{"v": 1}},
+			{Measurement: "x", Fields: map[string]float64{"nan": math.NaN()}},
+			{Measurement: "x", Fields: map[string]float64{"a\nb": 1, "a,b": 1, "a=b": 1, "a..b": 1, ".a": 1}},
+		},
+	}
+
+	points := testPoints(node)
+	assert.Len(points, 3)
+
+	nodeFields, _ := points[0].Fields()
+	assert.Equal("node", points[0].Name())
+	assert.EqualValues(3, nodeFields["clients.total"])
+
+	assert.Equal("mesh_vpn_peer", points[1].Name())
+	assert.Equal(map[string]string{"nodeid": "deadbeef", "hostname": "node1", "site": "ffmuc", "group": "muc01", "peer": "pgw-01"}, points[1].Tags())
+	fields, _ := points[1].Fields()
+	assert.Equal(map[string]interface{}{"established": 3600.0, "method": 1.0}, fields)
+
+	assert.Equal("clat", points[2].Name())
+	fields, _ = points[2].Fields()
+	assert.Equal(map[string]interface{}{"packets": 1200.0}, fields)
+
+	for _, p := range points {
+		assert.NotContains(p.String(), "\n")
+		assert.NotContains(p.String(), "evil")
+	}
+}
+
+func TestMetricsReservedMeasurements(t *testing.T) {
+	for _, m := range []string{MeasurementLink, MeasurementNode, MeasurementDHCP, MeasurementGlobal,
+		CounterMeasurementFirmware, CounterMeasurementModel, CounterMeasurementAutoupdater} {
+		assert.False(t, data.ValidMetricsMeasurement(m), m)
+	}
 }

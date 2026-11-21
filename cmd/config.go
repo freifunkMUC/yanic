@@ -55,5 +55,9 @@ func ReadConfigFile(path string) (config *Config, err error) {
 		return nil, err
 	}
 
+	if err = config.Respondd.Metrics.Validate(); err != nil {
+		return nil, err
+	}
+
 	return
 }

@@ -9,6 +9,7 @@ type Config struct {
 	Sites           map[string]SiteConfig `toml:"sites"`
 	CollectInterval duration.Duration     `toml:"collect_interval"`
 	CustomFields    []CustomFieldConfig   `toml:"custom_field"`
+	Metrics         MetricsConfig         `toml:"metrics"`
 }
 
 func (c *Config) SitesDomains() (result map[string][]string) {

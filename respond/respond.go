@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/flate"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -23,6 +24,9 @@ const (
 
 	// maximum receivable size
 	MaxDataGramSize = 8192
+
+	// maximum size of a decompressed response
+	MaxDecompressedSize = 1 << 20
 )
 
 // Response of the respond request
@@ -55,7 +59,7 @@ func NewRespone(res *data.ResponseData, addr *net.UDPAddr) (*Response, error) {
 	}, err
 }
 
-func (res *Response) parse(customFields []CustomFieldConfig) (*data.ResponseData, error) {
+func (res *Response) parse(customFields []CustomFieldConfig, metrics *metricsExtractor) (*data.ResponseData, error) {
 	// Deflate
 	deflater := flate.NewReader(bytes.NewReader(res.Raw))
 	defer func() {
@@ -63,9 +67,12 @@ func (res *Response) parse(customFields []CustomFieldConfig) (*data.ResponseData
 			slog.Error("failed to close uncompression", log.AttrError(err))
 		}
 	}()
-	jsonData, err := io.ReadAll(deflater)
+	jsonData, err := io.ReadAll(io.LimitReader(deflater, MaxDecompressedSize+1))
 	if err != nil && err != io.ErrUnexpectedEOF {
 		return nil, err
+	}
+	if len(jsonData) > MaxDecompressedSize {
+		return nil, fmt.Errorf("decompressed response is larger than %d bytes", MaxDecompressedSize)
 	}
 
 	// Unmarshal
@@ -83,6 +90,10 @@ func (res *Response) parse(customFields []CustomFieldConfig) (*data.ResponseData
 				rdata.CustomFields[customField.Name] = field.String()
 			}
 		}
+	}
+
+	if err == nil {
+		rdata.Metrics = metrics.extract(jsonData)
 	}
 
 	return rdata, err
