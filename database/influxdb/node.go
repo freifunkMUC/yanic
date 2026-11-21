@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"math"
 	"strconv"
-	"strings"
 	"time"
 
+	"codeberg.org/FreifunkBremen/yanic/data"
 	"codeberg.org/FreifunkBremen/yanic/lib/log"
 	"codeberg.org/FreifunkBremen/yanic/runtime"
 
@@ -17,8 +17,14 @@ import (
 
 // PruneNodes prunes historical per-node data
 func (conn *Connection) PruneNodes(deleteAfter time.Duration) {
-	for _, measurement := range []string{MeasurementNode, MeasurementLink} {
-		query := fmt.Sprintf("delete from %s where time < now() - %ds", measurement, deleteAfter/time.Second)
+	measurements := []string{MeasurementNode, MeasurementLink}
+	conn.metricMeasurements.Range(func(k, _ any) bool {
+		measurements = append(measurements, k.(string))
+		return true
+	})
+	for _, measurement := range measurements {
+		// measurement names are constants or validated ([a-z][a-z0-9_]*)
+		query := fmt.Sprintf("delete from \"%s\" where time < now() - %ds", measurement, deleteAfter/time.Second)
 		if _, err := conn.client.Query(client.NewQuery(query, conn.config.Database(), "m")); err != nil {
 			slog.Error("prune nodes", log.AttrError(err), "database", "influxdb")
 		}
@@ -181,9 +187,17 @@ func (conn *Connection) InsertNode(node *runtime.Node) {
 		tags.SetString("frequency"+suffix, strconv.Itoa(int(airtime.Frequency)))
 	}
 
-	addMetrics(fields, node.Metrics)
-
 	conn.addPoint(MeasurementNode, tags, fields, time)
+
+	if len(node.Metrics) > 0 {
+		metricTags := models.Tags{}
+		for _, k := range []string{"nodeid", "hostname", "site", "domain"} {
+			if v := tags.GetString(k); v != "" {
+				metricTags.SetString(k, v)
+			}
+		}
+		conn.insertMetrics(node, metricTags, time)
+	}
 
 	// Add DHCP statistics
 	if dhcp := stats.DHCP; dhcp != nil {
@@ -205,32 +219,16 @@ func (conn *Connection) InsertNode(node *runtime.Node) {
 	}
 }
 
-// reservedNodeFields are built-in node fields inside the respondd
-// namespaces. Generic metrics must never use these names, because a type
-// conflict would make InfluxDB reject the points of other nodes.
-var reservedNodeFields = map[string]bool{
-	"neighbours.batadv": true,
-	"neighbours.babel":  true,
-	"neighbours.lldp":   true,
-	"neighbours.vpn":    true,
-	"neighbours.total":  true,
-}
-
-// validMetricName accepts only [a-z0-9_] segments joined by dots,
-// with a respondd section as the first segment.
-func validMetricName(name string) bool {
-	root, rest, ok := strings.Cut(name, ".")
-	if !ok || rest == "" || (root != "statistics" && root != "nodeinfo" && root != "neighbours") {
+// validMetricKey accepts [a-z0-9_] segments joined by dots.
+func validMetricKey(name string, max int) bool {
+	if len(name) == 0 || len(name) > max || name[0] == '.' || name[len(name)-1] == '.' {
 		return false
 	}
-	prevDot := false
-	for i := 0; i < len(rest); i++ {
-		c := rest[i]
+	for i := 0; i < len(name); i++ {
+		c := name[i]
 		switch {
 		case c >= 'a' && c <= 'z', c >= '0' && c <= '9', c == '_':
-			prevDot = false
-		case c == '.' && !prevDot && i > 0 && i < len(rest)-1:
-			prevDot = true
+		case c == '.' && name[i-1] != '.':
 		default:
 			return false
 		}
@@ -238,16 +236,50 @@ func validMetricName(name string) bool {
 	return true
 }
 
-// addMetrics adds generic respondd metrics as float fields.
-// It never overwrites a built-in field.
-func addMetrics(fields models.Fields, metrics map[string]float64) {
-	for name, value := range metrics {
-		if _, exists := fields[name]; exists || reservedNodeFields[name] || !validMetricName(name) {
+// validMetricTagValue accepts [A-Za-z0-9_-]{1,64}.
+func validMetricTagValue(value string) bool {
+	if len(value) == 0 || len(value) > 64 {
+		return false
+	}
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '_' && c != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+// insertMetrics writes the points of [respondd.metrics] rules.
+// Each point gets the node tags and the captured tags.
+// The respond package validates all data; this is a second check.
+func (conn *Connection) insertMetrics(node *runtime.Node, nodeTags models.Tags, t time.Time) {
+	for _, p := range node.Metrics {
+		if !data.ValidMetricsMeasurement(p.Measurement) {
 			continue
 		}
-		if math.IsNaN(value) || math.IsInf(value, 0) {
+		fields := models.Fields{}
+		for name, value := range p.Fields {
+			if validMetricKey(name, 256) && !math.IsNaN(value) && !math.IsInf(value, 0) {
+				fields[name] = value
+			}
+		}
+		if len(fields) == 0 {
 			continue
 		}
-		fields[name] = value
+		tags := nodeTags.Clone()
+		valid := true
+		for k, v := range p.Tags {
+			if data.MetricsReservedTags[k] || !data.ValidMetricsIdentifier(k, 32) || !validMetricTagValue(v) {
+				valid = false
+				break
+			}
+			tags.SetString(k, v)
+		}
+		if !valid {
+			continue
+		}
+		conn.metricMeasurements.Store(p.Measurement, struct{}{})
+		conn.addPoint(p.Measurement, tags, fields, t)
 	}
 }

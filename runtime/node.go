@@ -17,7 +17,7 @@ type Node struct {
 	Nodeinfo     *data.Nodeinfo         `json:"nodeinfo"`
 	Neighbours   *data.Neighbours       `json:"-"`
 	CustomFields map[string]interface{} `json:"custom_fields"`
-	Metrics      map[string]float64     `json:"-"` // generic fields from [respondd.metrics]
+	Metrics      []data.MetricPoint     `json:"-"` // points from [respondd.metrics]
 }
 
 // IsGateway returns whether the node is a gateway

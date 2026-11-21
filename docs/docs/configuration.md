@@ -101,61 +101,95 @@ ip_address        = "fd2f:5119:f2d::5" # (9)
     If not set or set to 0 the kernel will use a random free port at its own.
 
 ## [respondd.metrics]
-Write more numeric respondd values to InfluxDB without code changes.
+Write more respondd values to InfluxDB without code changes.
 Default: off. When off, Yanic writes the same data as before.
 
 ```toml
 [respondd.metrics]
 enable = true
 # Limits (optional). The values below are the defaults.
-#max_depth           = 16   # max. JSON nesting depth (max. 32)
-#max_leaves          = 2048 # max. JSON values read per response (max. 65536)
-#max_fields_per_node = 256  # max. fields per node (max. 4096)
-#max_field_names     = 4096 # max. different field names, all nodes (max. 65536)
-#max_name_length     = 128  # max. bytes per field name (max. 256)
+#max_depth            = 16   # max. JSON nesting depth (max. 32)
+#max_leaves           = 2048 # max. JSON values read per response (max. 65536)
+#max_points_per_node  = 64   # max. points per node (max. 1024)
+#max_fields_per_point = 64   # max. fields per point (max. 1024)
+#max_tag_values       = 1024 # max. different values per tag and measurement, all nodes (max. 65536)
+#max_field_names      = 256  # max. different field names per measurement, all nodes (max. 4096)
+#max_name_length      = 128  # max. bytes per field name (max. 256)
 
-# Example: CLAT counters and mesh VPN peers of Gluon nodes
+# Example: CLAT counters of Gluon nodes
 [[respondd.metrics.rule]]
-path = "statistics.clat.**"
+path        = "statistics.clat.{direction}"
+measurement = "clat"
+
+# Example: mesh VPN peers of Gluon nodes
 [[respondd.metrics.rule]]
-path = "statistics.mesh_vpn.groups.*.peers.*.established"
-[[respondd.metrics.rule]]
-path = "statistics.mesh_vpn.groups.*.peers.*.method"
-values = { active = 1, standby = 0 }
+path        = "statistics.mesh_vpn.groups.{group}.peers.{peer}"
+measurement = "mesh_vpn_peer"
+values      = { method = { active = 1, standby = 0 } }
 ```
 
-Result in the measurement `node` (examples):
+Respondd data of a node (example):
 
-- `statistics.clat.v4_to_v6.packets`
-- `statistics.mesh_vpn.groups.muc01.peers.pgw_01.established`
-- `statistics.mesh_vpn.groups.muc01.peers.pgw_01.method` (1 = active, 0 = standby)
+```json
+{"statistics": {
+  "clat": {"v4_to_v6": {"packets": 12, "bytes": 3400}, "v6_to_v4": {"packets": 10, "bytes": 2900}},
+  "mesh_vpn": {"groups": {"muc01": {"peers": {"pgw01": {"established": 3600, "method": "active"}}}}}
+}}
+```
+
+Result (one point for each matched object):
+
+| measurement     | tags                                       | fields                       |
+|-----------------|--------------------------------------------|------------------------------|
+| `clat`          | `nodeid`, `direction=v4_to_v6`             | `packets=12`, `bytes=3400`   |
+| `clat`          | `nodeid`, `direction=v6_to_v4`             | `packets=10`, `bytes=2900`   |
+| `mesh_vpn_peer` | `nodeid`, `group=muc01`, `peer=pgw01`      | `established=3600`, `method=1` |
+
+Each point also has the tags `hostname`, `site` and `domain` of the node, if known.
+
+Grafana query (InfluxQL). The query does not contain group or peer names:
+
+```sql
+SELECT last("established") FROM "mesh_vpn_peer"
+WHERE "nodeid" =~ /^$node$/ AND $timeFilter
+GROUP BY time($__interval), "group", "peer"
+```
 
 ### Rules
 - `path` is a list of segments with a dot between them.
 - The first segment must be `nodeinfo`, `statistics` or `neighbours`.
-- A segment is a name (`a-z`, `0-9`, `_`, `-`), `*` (one key) or `**` (all keys below).
-  You can use `**` only as the last segment.
+- A segment is a name (`a-z`, `0-9`, `_`, `-`) or a capture `{name}`.
+  A capture matches each key at this level. The key becomes the value of the tag `name`.
+- Use a capture for each key that the node sets (for example gateway or peer names).
+  Then the field names stay the same for all nodes and queries can use `GROUP BY`.
+- `measurement` is the InfluxDB measurement (`a-z`, `0-9`, `_`).
+  You cannot use the built-in measurements (`node`, `link`, `dhcp`, `global`, `firmware`, `model`, `autoupdater`).
+  You cannot use the built-in tags (`nodeid`, `hostname`, `site`, `domain`) as capture names.
+- `fields` (optional) is a list of paths below the match, for example `["v4_to_v6.bytes"]`.
+  Without `fields`, Yanic uses only the values directly below the match.
+- `values` (optional) changes strings to numbers, for each field.
 - Yanic does not use regular expressions, templates or other expressions.
   A wrong rule stops Yanic at start.
 
 ### Values
-- Numbers: written as float. Yanic drops values that are not finite.
+- All fields are written as float.
+- Numbers: Yanic drops values that are not finite.
 - `true` and `false`: written as 1 and 0.
-- Strings: dropped. Exception: the rule has `values` and the string is a key in `values`.
-- Arrays and `null`: dropped.
+- Strings: dropped. Exception: `values` has the field and the string.
+- Arrays and `null`: dropped. A point without fields is not written.
 
-### Field names and security
+### Security
 Respondd data comes from the nodes. Yanic does not trust this data.
 
-- The field name is the full path, for example `statistics.clat.v4_to_v6.bytes`.
+- Field names come only from the config or from fixed keys below the match.
+  Keys from a capture are only tag values. They are never field names.
 - A key from the node must have 1 to 64 characters from `A-Z`, `a-z`, `0-9`, `_`, `-`.
-  Yanic changes it to lower case and changes `-` to `_`. Yanic ignores other keys.
-- If two keys get the same name, Yanic uses the first key.
-- Yanic never writes tags from these rules. Yanic never changes built-in fields.
-- If a limit is reached, Yanic stops reading or drops the field. The node data is still saved.
-- When `max_field_names` is reached, Yanic drops new field names and writes a warning.
-  Known field names continue to work.
-- Use `*` and `**` only where you trust the number of keys (for example peer names).
+  Yanic ignores other keys. Yanic compares names in lower case, with `_` for `-`.
+- Yanic writes tags, fields and names only through the InfluxDB client library.
+- Yanic never changes built-in measurements, fields or tags.
+- If a limit is reached, Yanic stops reading or drops the point or field. The node data is still saved.
+- When `max_tag_values` or `max_field_names` is reached, Yanic drops new values and writes a warning.
+  Known values continue to work.
 
 !!! info
     Yanic also drops respondd responses with more than 1 MiB of uncompressed data.

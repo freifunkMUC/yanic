@@ -5,31 +5,38 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/tidwall/gjson"
+
+	"codeberg.org/FreifunkBremen/yanic/data"
 )
 
 // Defaults and hard ceilings for [respondd.metrics]. Respondd data is
 // untrusted input from any node in the mesh, so every walk is bounded.
 const (
-	metricsDefaultMaxDepth         = 16
-	metricsDefaultMaxLeaves        = 2048
-	metricsDefaultMaxFieldsPerNode = 256
-	metricsDefaultMaxFieldNames    = 4096
-	metricsDefaultMaxNameLength    = 128
+	metricsDefaultMaxDepth          = 16
+	metricsDefaultMaxLeaves         = 2048
+	metricsDefaultMaxPointsPerNode  = 64
+	metricsDefaultMaxFieldsPerPoint = 64
+	metricsDefaultMaxTagValues      = 1024
+	metricsDefaultMaxFieldNames     = 256
+	metricsDefaultMaxNameLength     = 128
 
-	metricsCeilMaxDepth         = 32
-	metricsCeilMaxLeaves        = 65536
-	metricsCeilMaxFieldsPerNode = 4096
-	metricsCeilMaxFieldNames    = 65536
-	metricsCeilMaxNameLength    = 256
+	metricsCeilMaxDepth          = 32
+	metricsCeilMaxLeaves         = 65536
+	metricsCeilMaxPointsPerNode  = 1024
+	metricsCeilMaxFieldsPerPoint = 1024
+	metricsCeilMaxTagValues      = 65536
+	metricsCeilMaxFieldNames     = 4096
+	metricsCeilMaxNameLength     = 256
 
 	metricsMaxRules     = 256
-	metricsMaxKeyLength = 64 // per JSON key / path segment
+	metricsMaxKeyLength = 64 // per JSON key, path segment and tag value
 	metricsMaxStringLen = 64 // per mapped string value
 
 	metricsWarnInterval = time.Minute
@@ -42,56 +49,60 @@ var metricsRoots = map[string]bool{
 	"neighbours": true,
 }
 
-// MetricsConfig configures generic numeric fields from respondd data.
+// MetricsConfig configures generic metrics from respondd data.
 type MetricsConfig struct {
-	Enable           bool         `toml:"enable"`
-	MaxDepth         int          `toml:"max_depth"`
-	MaxLeaves        int          `toml:"max_leaves"`
-	MaxFieldsPerNode int          `toml:"max_fields_per_node"`
-	MaxFieldNames    int          `toml:"max_field_names"`
-	MaxNameLength    int          `toml:"max_name_length"`
-	Rules            []MetricRule `toml:"rule"`
+	Enable            bool         `toml:"enable"`
+	MaxDepth          int          `toml:"max_depth"`
+	MaxLeaves         int          `toml:"max_leaves"`
+	MaxPointsPerNode  int          `toml:"max_points_per_node"`
+	MaxFieldsPerPoint int          `toml:"max_fields_per_point"`
+	MaxTagValues      int          `toml:"max_tag_values"`
+	MaxFieldNames     int          `toml:"max_field_names"`
+	MaxNameLength     int          `toml:"max_name_length"`
+	Rules             []MetricRule `toml:"rule"`
 }
 
-// MetricRule selects respondd values by a static path glob.
+// MetricRule selects respondd objects by a static path. Each matched
+// object becomes one point in Measurement.
 type MetricRule struct {
-	Path   string             `toml:"path"`
-	Values map[string]float64 `toml:"values"`
+	Path        string                        `toml:"path"`
+	Measurement string                        `toml:"measurement"`
+	Fields      []string                      `toml:"fields"`
+	Values      map[string]map[string]float64 `toml:"values"`
 }
-
-type segmentKind uint8
-
-const (
-	segLiteral    segmentKind = iota
-	segStar                   // exactly one key
-	segDoubleStar             // zero or more keys, last segment only
-)
 
 type segment struct {
-	kind    segmentKind
+	capture string // tag name, if the segment is {name}
 	literal string
 }
 
 type compiledRule struct {
-	segments []segment
-	values   map[string]float64
+	measurement string
+	section     string
+	segments    []segment
+	fields      [][]string // nil: all direct leaves
+	fieldNames  []string
+	values      map[string]map[string]float64
 }
 
 type metricsLimits struct {
-	maxDepth         int
-	maxLeaves        int
-	maxFieldsPerNode int
-	maxFieldNames    int
-	maxNameLength    int
+	maxDepth          int
+	maxLeaves         int
+	maxPointsPerNode  int
+	maxFieldsPerPoint int
+	maxTagValues      int
+	maxFieldNames     int
+	maxNameLength     int
 }
 
 type metricsExtractor struct {
 	rules  []compiledRule
 	limits metricsLimits
 
-	mu       sync.Mutex
-	names    map[string]struct{} // distinct field names of all nodes, capped
-	lastWarn time.Time
+	mu         sync.Mutex
+	tagValues  map[string]map[string]struct{} // "measurement\x00tag" -> values, capped
+	fieldNames map[string]map[string]struct{} // measurement -> field names, capped
+	lastWarn   time.Time
 }
 
 func limitOrDefault(name string, value, def, ceil int) (int, error) {
@@ -115,81 +126,42 @@ func (c *MetricsConfig) Validate() error {
 
 func newMetricsExtractor(c *MetricsConfig) (*metricsExtractor, error) {
 	var l metricsLimits
-	var err error
-	if l.maxDepth, err = limitOrDefault("max_depth", c.MaxDepth, metricsDefaultMaxDepth, metricsCeilMaxDepth); err != nil {
-		return nil, err
-	}
-	if l.maxLeaves, err = limitOrDefault("max_leaves", c.MaxLeaves, metricsDefaultMaxLeaves, metricsCeilMaxLeaves); err != nil {
-		return nil, err
-	}
-	if l.maxFieldsPerNode, err = limitOrDefault("max_fields_per_node", c.MaxFieldsPerNode, metricsDefaultMaxFieldsPerNode, metricsCeilMaxFieldsPerNode); err != nil {
-		return nil, err
-	}
-	if l.maxFieldNames, err = limitOrDefault("max_field_names", c.MaxFieldNames, metricsDefaultMaxFieldNames, metricsCeilMaxFieldNames); err != nil {
-		return nil, err
-	}
-	if l.maxNameLength, err = limitOrDefault("max_name_length", c.MaxNameLength, metricsDefaultMaxNameLength, metricsCeilMaxNameLength); err != nil {
-		return nil, err
+	for _, x := range []struct {
+		name            string
+		dst             *int
+		value, def, max int
+	}{
+		{"max_depth", &l.maxDepth, c.MaxDepth, metricsDefaultMaxDepth, metricsCeilMaxDepth},
+		{"max_leaves", &l.maxLeaves, c.MaxLeaves, metricsDefaultMaxLeaves, metricsCeilMaxLeaves},
+		{"max_points_per_node", &l.maxPointsPerNode, c.MaxPointsPerNode, metricsDefaultMaxPointsPerNode, metricsCeilMaxPointsPerNode},
+		{"max_fields_per_point", &l.maxFieldsPerPoint, c.MaxFieldsPerPoint, metricsDefaultMaxFieldsPerPoint, metricsCeilMaxFieldsPerPoint},
+		{"max_tag_values", &l.maxTagValues, c.MaxTagValues, metricsDefaultMaxTagValues, metricsCeilMaxTagValues},
+		{"max_field_names", &l.maxFieldNames, c.MaxFieldNames, metricsDefaultMaxFieldNames, metricsCeilMaxFieldNames},
+		{"max_name_length", &l.maxNameLength, c.MaxNameLength, metricsDefaultMaxNameLength, metricsCeilMaxNameLength},
+	} {
+		v, err := limitOrDefault(x.name, x.value, x.def, x.max)
+		if err != nil {
+			return nil, err
+		}
+		*x.dst = v
 	}
 	if len(c.Rules) > metricsMaxRules {
 		return nil, fmt.Errorf("respondd.metrics: too many rules (%d, max %d)", len(c.Rules), metricsMaxRules)
 	}
 
 	e := &metricsExtractor{
-		limits: l,
-		names:  make(map[string]struct{}),
+		limits:     l,
+		tagValues:  make(map[string]map[string]struct{}),
+		fieldNames: make(map[string]map[string]struct{}),
 	}
 	for i, r := range c.Rules {
-		cr, err := compileRule(r, l.maxDepth)
+		cr, err := compileRule(r, l)
 		if err != nil {
 			return nil, fmt.Errorf("respondd.metrics.rule[%d] %q: %w", i, r.Path, err)
 		}
 		e.rules = append(e.rules, cr)
 	}
 	return e, nil
-}
-
-func compileRule(r MetricRule, maxDepth int) (compiledRule, error) {
-	parts := strings.Split(r.Path, ".")
-	if len(parts) < 2 {
-		return compiledRule{}, errors.New("path needs at least two segments")
-	}
-	if len(parts) > maxDepth {
-		return compiledRule{}, fmt.Errorf("path has more than max_depth (%d) segments", maxDepth)
-	}
-	cr := compiledRule{}
-	for i, p := range parts {
-		switch p {
-		case "*":
-			cr.segments = append(cr.segments, segment{kind: segStar})
-		case "**":
-			if i != len(parts)-1 {
-				return compiledRule{}, errors.New(`"**" is only allowed as the last segment`)
-			}
-			cr.segments = append(cr.segments, segment{kind: segDoubleStar})
-		default:
-			if !validRuleLiteral(p) {
-				return compiledRule{}, fmt.Errorf("invalid segment %q (allowed: a-z 0-9 _ -, length 1..%d, or * / **)", p, metricsMaxKeyLength)
-			}
-			cr.segments = append(cr.segments, segment{kind: segLiteral, literal: strings.ReplaceAll(p, "-", "_")})
-		}
-	}
-	if cr.segments[0].kind != segLiteral || !metricsRoots[cr.segments[0].literal] {
-		return compiledRule{}, errors.New(`first segment must be "nodeinfo", "statistics" or "neighbours"`)
-	}
-	if len(r.Values) > 0 {
-		cr.values = make(map[string]float64, len(r.Values))
-		for k, v := range r.Values {
-			if len(k) > metricsMaxStringLen {
-				return compiledRule{}, fmt.Errorf("value key %q is longer than %d bytes", k, metricsMaxStringLen)
-			}
-			if math.IsNaN(v) || math.IsInf(v, 0) {
-				return compiledRule{}, fmt.Errorf("value for %q is not a finite number", k)
-			}
-			cr.values[k] = v
-		}
-	}
-	return cr, nil
 }
 
 func validRuleLiteral(s string) bool {
@@ -205,46 +177,164 @@ func validRuleLiteral(s string) bool {
 	return true
 }
 
-// sanitizeKey converts a JSON key from node data to a field name segment.
-// It accepts only [A-Za-z0-9_-]{1,64}; other keys are rejected (not rewritten).
-// The result contains only [a-z0-9_].
+// parseFieldPath validates a relative field path from the config
+// and returns its normalized segments.
+func parseFieldPath(p string, maxLen int) ([]string, error) {
+	if len(p) == 0 || len(p) > maxLen {
+		return nil, fmt.Errorf("field %q: length must be 1..%d", p, maxLen)
+	}
+	parts := strings.Split(p, ".")
+	for i, s := range parts {
+		if !validRuleLiteral(s) {
+			return nil, fmt.Errorf("field %q: invalid segment %q (allowed: a-z 0-9 _ -)", p, s)
+		}
+		parts[i] = strings.ReplaceAll(s, "-", "_")
+	}
+	return parts, nil
+}
+
+func compileRule(r MetricRule, l metricsLimits) (compiledRule, error) {
+	cr := compiledRule{measurement: r.Measurement}
+	if !data.ValidMetricsMeasurement(r.Measurement) {
+		return cr, fmt.Errorf("invalid measurement %q (allowed: [a-z][a-z0-9_]{0,63}, not a built-in measurement)", r.Measurement)
+	}
+
+	parts := strings.Split(r.Path, ".")
+	if len(parts) > l.maxDepth {
+		return cr, fmt.Errorf("path has more than max_depth (%d) segments", l.maxDepth)
+	}
+	captures := map[string]bool{}
+	for _, p := range parts {
+		if strings.HasPrefix(p, "{") && strings.HasSuffix(p, "}") {
+			name := p[1 : len(p)-1]
+			if !data.ValidMetricsIdentifier(name, 32) {
+				return cr, fmt.Errorf("invalid capture %q (allowed: [a-z][a-z0-9_]{0,31})", p)
+			}
+			if data.MetricsReservedTags[name] || captures[name] {
+				return cr, fmt.Errorf("capture name %q is reserved or used twice", name)
+			}
+			captures[name] = true
+			cr.segments = append(cr.segments, segment{capture: name})
+			continue
+		}
+		if !validRuleLiteral(p) {
+			return cr, fmt.Errorf("invalid segment %q (allowed: a-z 0-9 _ -, length 1..%d, or {name})", p, metricsMaxKeyLength)
+		}
+		cr.segments = append(cr.segments, segment{literal: strings.ReplaceAll(p, "-", "_")})
+	}
+	if cr.segments[0].capture != "" || !metricsRoots[cr.segments[0].literal] {
+		return cr, errors.New(`first segment must be "nodeinfo", "statistics" or "neighbours"`)
+	}
+	cr.section = cr.segments[0].literal
+
+	for _, f := range r.Fields {
+		parts, err := parseFieldPath(f, l.maxNameLength)
+		if err != nil {
+			return cr, err
+		}
+		if len(cr.segments)+len(parts) > l.maxDepth {
+			return cr, fmt.Errorf("field %q: path is deeper than max_depth (%d)", f, l.maxDepth)
+		}
+		cr.fields = append(cr.fields, parts)
+		cr.fieldNames = append(cr.fieldNames, strings.Join(parts, "."))
+	}
+	if len(cr.fields) > l.maxFieldsPerPoint {
+		return cr, fmt.Errorf("more than max_fields_per_point (%d) fields", l.maxFieldsPerPoint)
+	}
+
+	if len(r.Values) > 0 {
+		cr.values = make(map[string]map[string]float64, len(r.Values))
+		for field, m := range r.Values {
+			parts, err := parseFieldPath(field, l.maxNameLength)
+			if err != nil {
+				return cr, fmt.Errorf("values: %w", err)
+			}
+			name := strings.Join(parts, ".")
+			cr.values[name] = make(map[string]float64, len(m))
+			for k, v := range m {
+				if len(k) > metricsMaxStringLen {
+					return cr, fmt.Errorf("values.%s: key %q is longer than %d bytes", field, k, metricsMaxStringLen)
+				}
+				if math.IsNaN(v) || math.IsInf(v, 0) {
+					return cr, fmt.Errorf("values.%s: value for %q is not a finite number", field, k)
+				}
+				cr.values[name][k] = v
+			}
+		}
+	}
+	return cr, nil
+}
+
+// sanitizeKey converts a JSON key from node data for literal comparison
+// and field names. It accepts only [A-Za-z0-9_-]{1,64}; other keys are
+// rejected (not rewritten). The result contains only [a-z0-9_].
 func sanitizeKey(s string) (string, bool) {
-	if len(s) == 0 || len(s) > metricsMaxKeyLength {
+	if !validTagValue(s) {
 		return "", false
 	}
-	b := make([]byte, len(s))
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch {
-		case c >= 'a' && c <= 'z', c >= '0' && c <= '9', c == '_':
-			b[i] = c
-		case c >= 'A' && c <= 'Z':
+	b := []byte(s)
+	for i, c := range b {
+		if c >= 'A' && c <= 'Z' {
 			b[i] = c + ('a' - 'A')
-		case c == '-':
+		} else if c == '-' {
 			b[i] = '_'
-		default:
-			return "", false
 		}
 	}
 	return string(b), true
 }
 
-type ruleState struct {
-	rule int
-	pos  int
+// validTagValue checks [A-Za-z0-9_-]{1,64}. Captured keys are used
+// unchanged as tag values.
+func validTagValue(s string) bool {
+	if len(s) == 0 || len(s) > metricsMaxKeyLength {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '_' && c != '-' {
+			return false
+		}
+	}
+	return true
 }
 
 type metricsWalk struct {
 	e      *metricsExtractor
-	out    map[string]float64
+	points []data.MetricPoint
+	seen   map[string]bool // measurement + tag set, against duplicate points
 	leaves int
 	stop   bool
 	capHit bool
 }
 
-// extract returns the numeric values of jsonData selected by the rules.
+func (w *metricsWalk) visit() bool {
+	w.leaves++
+	if w.leaves > w.e.limits.maxLeaves {
+		w.stop = true
+	}
+	return !w.stop
+}
+
+// child returns the value of the first key of obj that matches literal.
+func (w *metricsWalk) child(obj gjson.Result, literal string) (gjson.Result, bool) {
+	var res gjson.Result
+	found := false
+	obj.ForEach(func(k, v gjson.Result) bool {
+		if !w.visit() {
+			return false
+		}
+		if key, ok := sanitizeKey(k.Str); ok && k.Type == gjson.String && key == literal {
+			res, found = v, true
+			return false
+		}
+		return true
+	})
+	return res, found
+}
+
+// extract returns the points selected by the rules.
 // jsonData must already be valid JSON (encoding/json parsed it before).
-func (e *metricsExtractor) extract(jsonData []byte) map[string]float64 {
+func (e *metricsExtractor) extract(jsonData []byte) []data.MetricPoint {
 	if e == nil || len(e.rules) == 0 {
 		return nil
 	}
@@ -253,142 +343,171 @@ func (e *metricsExtractor) extract(jsonData []byte) map[string]float64 {
 		return nil
 	}
 
-	states := make([]ruleState, len(e.rules))
-	for i := range e.rules {
-		states[i] = ruleState{rule: i}
-	}
-
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	w := &metricsWalk{e: e, out: make(map[string]float64)}
-	w.walk(root, "", 1, states)
+	w := &metricsWalk{e: e, seen: map[string]bool{}}
+	for i := range e.rules {
+		if w.stop {
+			break
+		}
+		w.match(&e.rules[i], root, 0, nil)
+	}
 
 	if w.capHit && time.Since(e.lastWarn) > metricsWarnInterval {
 		e.lastWarn = time.Now()
-		slog.Warn("respondd metrics: max_field_names reached, new field names are dropped", "max_field_names", e.limits.maxFieldNames)
+		slog.Warn("respondd metrics: max_tag_values or max_field_names reached, new values are dropped",
+			"max_tag_values", e.limits.maxTagValues, "max_field_names", e.limits.maxFieldNames)
 	}
-	if len(w.out) == 0 {
-		return nil
-	}
-	return w.out
+	return w.points
 }
 
-func (w *metricsWalk) advance(states []ruleState, key string) []ruleState {
-	var next []ruleState
-	for _, s := range states {
-		segs := w.e.rules[s.rule].segments
-		if s.pos >= len(segs) {
-			continue
+func (w *metricsWalk) match(r *compiledRule, obj gjson.Result, pos int, captures []string) {
+	if w.stop || !obj.IsObject() {
+		return
+	}
+	if pos == len(r.segments) {
+		w.point(r, obj, captures)
+		return
+	}
+	seg := r.segments[pos]
+	if seg.capture == "" {
+		if v, ok := w.child(obj, seg.literal); ok {
+			w.match(r, v, pos+1, captures)
 		}
-		seg := segs[s.pos]
-		switch seg.kind {
-		case segLiteral:
-			if seg.literal == key {
-				next = append(next, ruleState{s.rule, s.pos + 1})
-			}
-		case segStar:
-			next = append(next, ruleState{s.rule, s.pos + 1})
-		case segDoubleStar:
-			next = append(next, s)
-		}
-	}
-	return next
-}
-
-func (w *metricsWalk) complete(s ruleState) bool {
-	segs := w.e.rules[s.rule].segments
-	return s.pos == len(segs) || (s.pos == len(segs)-1 && segs[s.pos].kind == segDoubleStar)
-}
-
-func (w *metricsWalk) walk(obj gjson.Result, prefix string, depth int, states []ruleState) {
-	if depth > w.e.limits.maxDepth {
 		return
 	}
 	obj.ForEach(func(k, v gjson.Result) bool {
-		w.leaves++
-		if w.leaves > w.e.limits.maxLeaves {
-			w.stop = true
+		if !w.visit() {
 			return false
 		}
-		if k.Type != gjson.String {
-			return true
-		}
-		key, ok := sanitizeKey(k.Str)
-		if !ok {
-			return true
-		}
-		next := w.advance(states, key)
-		if len(next) == 0 {
-			return true
-		}
-		name := key
-		if prefix != "" {
-			name = prefix + "." + key
-		}
-		if len(name) > w.e.limits.maxNameLength {
-			return true
-		}
-		switch {
-		case v.IsObject():
-			w.walk(v, name, depth+1, next)
-		case v.IsArray():
-			// arrays have no stable names; they are not walked
-		default:
-			w.leaf(name, v, next)
+		if k.Type == gjson.String && validTagValue(k.Str) && v.IsObject() {
+			w.match(r, v, pos+1, append(captures[:len(captures):len(captures)], k.Str))
 		}
 		return !w.stop
 	})
 }
 
-func (w *metricsWalk) leaf(name string, v gjson.Result, states []ruleState) {
-	var value float64
-	found := false
-	for _, s := range states {
-		if !w.complete(s) {
-			continue
-		}
-		switch v.Type {
-		case gjson.Number:
-			f, err := strconv.ParseFloat(v.Raw, 64)
-			if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
-				return
-			}
-			value, found = f, true
-		case gjson.True:
-			value, found = 1, true
-		case gjson.False:
-			value, found = 0, true
-		case gjson.String:
-			if values := w.e.rules[s.rule].values; values != nil && len(v.Str) <= metricsMaxStringLen {
-				value, found = values[v.Str]
-			}
-		default:
-			return
-		}
-		if found {
-			break
-		}
-	}
-	if found {
-		w.emit(name, value)
-	}
-}
-
-func (w *metricsWalk) emit(name string, value float64) {
-	if _, dup := w.out[name]; dup {
-		return
-	}
-	if len(w.out) >= w.e.limits.maxFieldsPerNode {
+func (w *metricsWalk) point(r *compiledRule, obj gjson.Result, captures []string) {
+	if len(w.points) >= w.e.limits.maxPointsPerNode {
 		w.stop = true
 		return
 	}
-	if _, known := w.e.names[name]; !known {
-		if len(w.e.names) >= w.e.limits.maxFieldNames {
+
+	tags := make(map[string]string, len(captures))
+	id := r.measurement
+	ci := 0
+	for _, seg := range r.segments {
+		if seg.capture != "" {
+			tags[seg.capture] = captures[ci]
+			id += "\x00" + captures[ci]
+			ci++
+		}
+	}
+	if w.seen[id] {
+		return
+	}
+
+	fields := map[string]float64{}
+	if r.fields == nil {
+		obj.ForEach(func(k, v gjson.Result) bool {
+			if !w.visit() {
+				return false
+			}
+			name, ok := sanitizeKey(k.Str)
+			if !ok || k.Type != gjson.String || len(name) > w.e.limits.maxNameLength {
+				return true
+			}
+			w.addField(r, fields, name, v)
+			return len(fields) < w.e.limits.maxFieldsPerPoint
+		})
+	} else {
+		for i, path := range r.fields {
+			v, ok := obj, true
+			for _, seg := range path {
+				if v, ok = w.child(v, seg); !ok {
+					break
+				}
+			}
+			if ok {
+				w.addField(r, fields, r.fieldNames[i], v)
+			}
+		}
+	}
+	if len(fields) == 0 || w.stop {
+		return
+	}
+
+	// Register tag values last: a point without fields uses no tag slot.
+	keys := make([]string, 0, len(tags))
+	for k := range tags {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if !register(w.e.tagValues, r.measurement+"\x00"+k, tags[k], w.e.limits.maxTagValues) {
 			w.capHit = true
 			return
 		}
-		w.e.names[name] = struct{}{}
 	}
-	w.out[name] = value
+
+	w.seen[id] = true
+	w.points = append(w.points, data.MetricPoint{
+		Section:     r.section,
+		Measurement: r.measurement,
+		Tags:        tags,
+		Fields:      fields,
+	})
+}
+
+func (w *metricsWalk) addField(r *compiledRule, fields map[string]float64, name string, v gjson.Result) {
+	if _, dup := fields[name]; dup {
+		return
+	}
+	var value float64
+	switch v.Type {
+	case gjson.Number:
+		f, err := strconv.ParseFloat(v.Raw, 64)
+		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
+			return
+		}
+		value = f
+	case gjson.True:
+		value = 1
+	case gjson.False:
+		value = 0
+	case gjson.String:
+		m := r.values[name]
+		if m == nil || len(v.Str) > metricsMaxStringLen {
+			return
+		}
+		var ok bool
+		if value, ok = m[v.Str]; !ok {
+			return
+		}
+	default:
+		return
+	}
+	if !register(w.e.fieldNames, r.measurement, name, w.e.limits.maxFieldNames) {
+		w.capHit = true
+		return
+	}
+	fields[name] = value
+}
+
+// register adds value to set[key] if it is known or the set has room.
+func register(sets map[string]map[string]struct{}, key, value string, max int) bool {
+	set := sets[key]
+	if set == nil {
+		set = make(map[string]struct{})
+		sets[key] = set
+	}
+	if _, ok := set[value]; ok {
+		return true
+	}
+	if len(set) >= max {
+		return false
+	}
+	set[value] = struct{}{}
+	return true
 }

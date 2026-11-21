@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"strings"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -368,13 +367,21 @@ func (coll *Collector) saveGlobalStats() {
 	}
 }
 
-// dropOrphanMetrics removes metrics of sections that were discarded or missing.
+// dropOrphanMetrics removes metric points of sections that were discarded or missing.
 func dropOrphanMetrics(res *data.ResponseData) {
-	for name := range res.Metrics {
-		if (strings.HasPrefix(name, "statistics.") && res.Statistics == nil) ||
-			(strings.HasPrefix(name, "neighbours.") && res.Neighbours == nil) ||
-			(strings.HasPrefix(name, "nodeinfo.") && res.Nodeinfo == nil) {
-			delete(res.Metrics, name)
+	if len(res.Metrics) == 0 {
+		return
+	}
+	present := map[string]bool{
+		"statistics": res.Statistics != nil,
+		"neighbours": res.Neighbours != nil,
+		"nodeinfo":   res.Nodeinfo != nil,
+	}
+	points := res.Metrics[:0]
+	for _, p := range res.Metrics {
+		if present[p.Section] {
+			points = append(points, p)
 		}
 	}
+	res.Metrics = points
 }
