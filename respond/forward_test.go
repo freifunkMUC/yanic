@@ -55,7 +55,7 @@ func TestForwardKeepsRawSections(t *testing.T) {
 
 	listener, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err)
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	conn, err := respondd.Connect(map[string]interface{}{"type": "udp", "address": listener.LocalAddr().String()})
 	require.NoError(t, err)
 	conn.InsertNode(node)
