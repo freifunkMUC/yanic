@@ -11,7 +11,6 @@ import (
 	"net"
 	"time"
 
-	"codeberg.org/FreifunkBremen/yanic/data"
 	"codeberg.org/FreifunkBremen/yanic/database"
 	"codeberg.org/FreifunkBremen/yanic/lib/log"
 	"codeberg.org/FreifunkBremen/yanic/runtime"
@@ -52,11 +51,7 @@ func Connect(configuration map[string]interface{}) (database.Connection, error) 
 }
 
 func (conn *Connection) InsertNode(node *runtime.Node) {
-	res := &data.ResponseData{
-		Nodeinfo:   node.Nodeinfo,
-		Statistics: node.Statistics,
-		Neighbours: node.Neighbours,
-	}
+	res := forwardData(node)
 
 	writer := bufio.NewWriterSize(conn.conn, 8192)
 
@@ -102,4 +97,21 @@ func (conn *Connection) Close() {
 	if err := conn.conn.Close(); err != nil {
 		logger.Error("cound not close socket", log.AttrError(err))
 	}
+}
+
+// forwardData returns the sections to send. It uses the received JSON of a section
+// if it is known, so keys without a Go field (for example statistics.clat) are kept.
+func forwardData(node *runtime.Node) map[string]interface{} {
+	res := make(map[string]interface{}, 3)
+	add := func(name string, typed interface{}, present bool) {
+		if raw, ok := node.Raw[name]; ok {
+			res[name] = raw
+		} else if present {
+			res[name] = typed
+		}
+	}
+	add("nodeinfo", node.Nodeinfo, node.Nodeinfo != nil)
+	add("statistics", node.Statistics, node.Statistics != nil)
+	add("neighbours", node.Neighbours, node.Neighbours != nil)
+	return res
 }

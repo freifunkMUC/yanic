@@ -94,7 +94,26 @@ func (res *Response) parse(customFields []CustomFieldConfig, metrics *metricsExt
 
 	if err == nil {
 		rdata.Metrics = metrics.extract(jsonData)
+		rdata.Raw = rawSections(jsonData)
 	}
 
 	return rdata, err
+}
+
+// rawSections returns the JSON of each known respondd section of a response.
+func rawSections(jsonData []byte) map[string]json.RawMessage {
+	var all map[string]json.RawMessage
+	if err := json.Unmarshal(jsonData, &all); err != nil {
+		return nil
+	}
+	sections := make(map[string]json.RawMessage, 3)
+	for _, name := range []string{"nodeinfo", "statistics", "neighbours"} {
+		if raw, ok := all[name]; ok && len(raw) > 0 && string(raw) != "null" {
+			sections[name] = raw
+		}
+	}
+	if len(sections) == 0 {
+		return nil
+	}
+	return sections
 }

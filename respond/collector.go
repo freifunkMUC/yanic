@@ -296,6 +296,7 @@ func (coll *Collector) saveResponse(addr *net.UDPAddr, res *data.ResponseData) {
 		res.Nodeinfo = nil
 	}
 	dropOrphanMetrics(res)
+	dropOrphanRaw(res)
 
 	// Process the data and update IP address
 	node := coll.nodes.Update(nodeID, res)
@@ -384,4 +385,17 @@ func dropOrphanMetrics(res *data.ResponseData) {
 		}
 	}
 	res.Metrics = points
+}
+
+// dropOrphanRaw removes the received JSON of sections that were discarded or missing.
+func dropOrphanRaw(res *data.ResponseData) {
+	if res.Statistics == nil {
+		delete(res.Raw, "statistics")
+	}
+	if res.Neighbours == nil {
+		delete(res.Raw, "neighbours")
+	}
+	if res.Nodeinfo == nil {
+		delete(res.Raw, "nodeinfo")
+	}
 }

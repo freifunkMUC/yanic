@@ -577,6 +577,11 @@ prefix   = "freifunk" # (2)
 Forward collected respondd package to a address
 (e.g. to another respondd collector like a central yanic instance or hopglass)
 
+Yanic sends each section (`nodeinfo`, `statistics`, `neighbours`) as it was received.
+Keys that Yanic does not know (for example `statistics.clat`) stay in the data,
+so the receiving Yanic can use them in `[respondd.custom_field]` and `[respondd.metrics]`.
+A section from the state file (before the first response after a start) is sent with known keys only.
+
 ```toml
 # respondd (yanic)
 # forward collected respondd package to a address

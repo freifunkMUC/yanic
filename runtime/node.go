@@ -1,6 +1,8 @@
 package runtime
 
 import (
+	"encoding/json"
+
 	"net"
 
 	"codeberg.org/FreifunkBremen/yanic/data"
@@ -9,15 +11,16 @@ import (
 
 // Node struct
 type Node struct {
-	Address      *net.UDPAddr           `json:"-"` // the last known address
-	Firstseen    jsontime.Time          `json:"firstseen"`
-	Lastseen     jsontime.Time          `json:"lastseen"`
-	Online       bool                   `json:"online"`
-	Statistics   *data.Statistics       `json:"statistics"`
-	Nodeinfo     *data.Nodeinfo         `json:"nodeinfo"`
-	Neighbours   *data.Neighbours       `json:"-"`
-	CustomFields map[string]interface{} `json:"custom_fields"`
-	Metrics      []data.MetricPoint     `json:"-"` // points from [respondd.metrics]
+	Address      *net.UDPAddr               `json:"-"` // the last known address
+	Firstseen    jsontime.Time              `json:"firstseen"`
+	Lastseen     jsontime.Time              `json:"lastseen"`
+	Online       bool                       `json:"online"`
+	Statistics   *data.Statistics           `json:"statistics"`
+	Nodeinfo     *data.Nodeinfo             `json:"nodeinfo"`
+	Neighbours   *data.Neighbours           `json:"-"`
+	CustomFields map[string]interface{}     `json:"custom_fields"`
+	Metrics      []data.MetricPoint         `json:"-"` // points from [respondd.metrics]
+	Raw          map[string]json.RawMessage `json:"-"` // received JSON of each section
 }
 
 // IsGateway returns whether the node is a gateway
