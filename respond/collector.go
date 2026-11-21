@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"strings"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -25,6 +26,7 @@ type Collector struct {
 	interval time.Duration // Interval for multicast packets
 	stop     chan interface{}
 	config   *Config
+	metrics  *metricsExtractor
 }
 
 type multicastConn struct {
@@ -42,6 +44,15 @@ func NewCollector(db database.Connection, nodes *runtime.Nodes, config *Config) 
 		queue:  make(chan *Response, 400),
 		stop:   make(chan interface{}),
 		config: config,
+	}
+
+	if config.Metrics.Enable {
+		metrics, err := newMetricsExtractor(&config.Metrics)
+		if err != nil {
+			slog.Error("respondd metrics disabled", log.AttrError(err))
+		} else {
+			coll.metrics = metrics
+		}
 	}
 
 	for _, iface := range config.Interfaces {
@@ -250,7 +261,7 @@ func (coll *Collector) sender() {
 
 func (coll *Collector) parser() {
 	for obj := range coll.queue {
-		if data, err := obj.parse(coll.config.CustomFields); err != nil {
+		if data, err := obj.parse(coll.config.CustomFields, coll.metrics); err != nil {
 			slog.Error("unable to decode response", log.AttrError(err), "address", obj.Address.String())
 		} else {
 			coll.saveResponse(obj.Address, data)
@@ -285,6 +296,7 @@ func (coll *Collector) saveResponse(addr *net.UDPAddr, res *data.ResponseData) {
 	if res.Nodeinfo != nil && res.Nodeinfo.NodeID != nodeID {
 		res.Nodeinfo = nil
 	}
+	dropOrphanMetrics(res)
 
 	// Process the data and update IP address
 	node := coll.nodes.Update(nodeID, res)
@@ -352,6 +364,17 @@ func (coll *Collector) saveGlobalStats() {
 	for site, domains := range stats {
 		for domain, stat := range domains {
 			coll.db.InsertGlobals(stat, time.Now(), site, domain)
+		}
+	}
+}
+
+// dropOrphanMetrics removes metrics of sections that were discarded or missing.
+func dropOrphanMetrics(res *data.ResponseData) {
+	for name := range res.Metrics {
+		if (strings.HasPrefix(name, "statistics.") && res.Statistics == nil) ||
+			(strings.HasPrefix(name, "neighbours.") && res.Neighbours == nil) ||
+			(strings.HasPrefix(name, "nodeinfo.") && res.Nodeinfo == nil) {
+			delete(res.Metrics, name)
 		}
 	}
 }

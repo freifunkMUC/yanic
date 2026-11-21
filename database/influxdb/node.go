@@ -3,7 +3,9 @@ package influxdb
 import (
 	"fmt"
 	"log/slog"
+	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"codeberg.org/FreifunkBremen/yanic/lib/log"
@@ -179,6 +181,8 @@ func (conn *Connection) InsertNode(node *runtime.Node) {
 		tags.SetString("frequency"+suffix, strconv.Itoa(int(airtime.Frequency)))
 	}
 
+	addMetrics(fields, node.Metrics)
+
 	conn.addPoint(MeasurementNode, tags, fields, time)
 
 	// Add DHCP statistics
@@ -198,5 +202,52 @@ func (conn *Connection) InsertNode(node *runtime.Node) {
 		}
 
 		conn.addPoint(MeasurementDHCP, tags, fields, time)
+	}
+}
+
+// reservedNodeFields are built-in node fields inside the respondd
+// namespaces. Generic metrics must never use these names, because a type
+// conflict would make InfluxDB reject the points of other nodes.
+var reservedNodeFields = map[string]bool{
+	"neighbours.batadv": true,
+	"neighbours.babel":  true,
+	"neighbours.lldp":   true,
+	"neighbours.vpn":    true,
+	"neighbours.total":  true,
+}
+
+// validMetricName accepts only [a-z0-9_] segments joined by dots,
+// with a respondd section as the first segment.
+func validMetricName(name string) bool {
+	root, rest, ok := strings.Cut(name, ".")
+	if !ok || rest == "" || (root != "statistics" && root != "nodeinfo" && root != "neighbours") {
+		return false
+	}
+	prevDot := false
+	for i := 0; i < len(rest); i++ {
+		c := rest[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= '0' && c <= '9', c == '_':
+			prevDot = false
+		case c == '.' && !prevDot && i > 0 && i < len(rest)-1:
+			prevDot = true
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// addMetrics adds generic respondd metrics as float fields.
+// It never overwrites a built-in field.
+func addMetrics(fields models.Fields, metrics map[string]float64) {
+	for name, value := range metrics {
+		if _, exists := fields[name]; exists || reservedNodeFields[name] || !validMetricName(name) {
+			continue
+		}
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			continue
+		}
+		fields[name] = value
 	}
 }

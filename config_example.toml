@@ -20,6 +20,18 @@ collect_interval = "1m"
 # We expect this expression to return a string.
 #path = nodeinfo.location.zip
 
+# Write more numeric respondd values to the InfluxDB "node" measurement.
+# Default: off. See docs/docs/configuration.md for the rules and limits.
+#[respondd.metrics]
+#enable = true
+#[[respondd.metrics.rule]]
+#path = "statistics.clat.**"
+#[[respondd.metrics.rule]]
+#path = "statistics.mesh_vpn.groups.*.peers.*.established"
+#[[respondd.metrics.rule]]
+#path = "statistics.mesh_vpn.groups.*.peers.*.method"
+#values = { active = 1, standby = 0 }
+
 # table of a site to save stats for (not exists for global only)
 #[respondd.sites.example]
 ## list of domains on this site to save stats for (empty for global only)

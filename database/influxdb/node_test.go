@@ -1,6 +1,7 @@
 package influxdb
 
 import (
+	"math"
 	"testing"
 
 	"codeberg.org/FreifunkBremen/yanic/data"
@@ -242,4 +243,56 @@ func testPoints(nodes ...*runtime.Node) (points []*client.Point) {
 	}
 
 	return
+}
+
+func TestToInfluxMetrics(t *testing.T) {
+	assert := assert.New(t)
+
+	node := &runtime.Node{
+		Statistics: &data.Statistics{NodeID: "deadbeef", Clients: data.Clients{Total: 3}},
+		Metrics: map[string]float64{
+			"statistics.clat.v4_to_v6.packets":                     1200,
+			"statistics.mesh_vpn.groups.muc01.peers.pgw_01.method": 1,
+			"neighbours.total":                                     999,
+			"clients.total":                                        999,
+			"statistics.bad name":                                  1,
+			"statistics.x\nnode,nodeid=evil value=1":               1,
+			"statistics.":                                          1,
+			"statistics..x":                                        1,
+			"statistics.nan":                                       math.NaN(),
+			"statistics.inf":                                       math.Inf(1),
+		},
+	}
+
+	points := testPoints(node)
+	assert.Len(points, 1)
+	fields, _ := points[0].Fields()
+
+	assert.EqualValues(1200, fields["statistics.clat.v4_to_v6.packets"])
+	assert.EqualValues(1, fields["statistics.mesh_vpn.groups.muc01.peers.pgw_01.method"])
+	assert.EqualValues(3, fields["clients.total"])
+	for _, name := range []string{"neighbours.total", "statistics.bad name", "statistics.x\nnode,nodeid=evil value=1", "statistics.", "statistics..x", "statistics.nan", "statistics.inf"} {
+		assert.NotContains(fields, name)
+	}
+
+	line := points[0].String()
+	assert.NotContains(line, "\n")
+	assert.Contains(line, "statistics.clat.v4_to_v6.packets=1200")
+}
+
+func TestReservedNodeFields(t *testing.T) {
+	// every built-in node field inside a respondd namespace must be reserved
+	node := &runtime.Node{
+		Statistics: &data.Statistics{NodeID: "deadbeef"},
+		Nodeinfo:   &data.Nodeinfo{NodeID: "deadbeef", Wireless: &data.Wireless{}},
+		Neighbours: &data.Neighbours{NodeID: "deadbeef"},
+	}
+	points := testPoints(node)
+	fields, _ := points[0].Fields()
+	assert.Contains(t, fields, "neighbours.total")
+	for name := range fields {
+		if validMetricName(name) {
+			assert.True(t, reservedNodeFields[name], name)
+		}
+	}
 }

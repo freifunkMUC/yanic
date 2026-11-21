@@ -41,7 +41,7 @@ func TestParse(t *testing.T) {
 		Raw: compressed,
 	}
 
-	data, err := res.parse([]CustomFieldConfig{})
+	data, err := res.parse([]CustomFieldConfig{}, nil)
 
 	assert.NoError(err)
 	assert.NotNil(data)
@@ -67,7 +67,7 @@ func TestParseCustomFields(t *testing.T) {
 		},
 	}
 
-	data, err := res.parse(customFields)
+	data, err := res.parse(customFields, nil)
 
 	assert.NoError(err)
 	assert.NotNil(data)
@@ -94,7 +94,7 @@ func TestParseCustomFieldNotExistant(t *testing.T) {
 		},
 	}
 
-	data, err := res.parse(customFields)
+	data, err := res.parse(customFields, nil)
 
 	assert.NoError(err)
 	assert.NotNil(data)
