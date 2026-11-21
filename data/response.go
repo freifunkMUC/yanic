@@ -1,5 +1,7 @@
 package data
 
+import "encoding/json"
+
 // ResponseData struct
 type ResponseData struct {
 	Neighbours   *Neighbours            `json:"neighbours"`
@@ -7,6 +9,9 @@ type ResponseData struct {
 	Statistics   *Statistics            `json:"statistics"`
 	CustomFields map[string]interface{} `json:"-"`
 	Metrics      []MetricPoint          `json:"-"`
+	// Raw holds the received JSON of each section (nodeinfo, statistics, neighbours).
+	// The respondd database sends it on unchanged, so keys without a Go field are kept.
+	Raw map[string]json.RawMessage `json:"-"`
 }
 
 // MetricPoint is one object of respondd data selected by a
